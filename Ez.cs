@@ -32,26 +32,31 @@ namespace OpenSMO
       } catch { CloseHandler(); try { stream.Close(); } catch { ErrorHandler(); } return new byte[0]; }
     }
 
-    public static void WriteNT(BinaryWriter stream, string Str)
-    {
-      byte[] writeBytes = new byte[Str.Length + 1];
-      for (int i = 0; i < Str.Length; i++)
-        writeBytes[i] = (byte)Str[i];
-      writeBytes[Str.Length] = 0;
-      stream.Write(writeBytes);
-    }
-
     public static string ReadNT(BinaryReader stream)
     {
-      string ret = "";
-      byte addByte = 0x00;
-      do {
-        addByte = ReadByte(stream);
-        if (addByte != 0x00)
-          ret += (char)addByte;
-      } while (addByte != 0x00);
-      return ret;
+        string ret = "";
+        byte addByte = 0x00;
+        do {
+          addByte = ReadByte(stream);
+          if (addByte != 0x00)
+            ret += (char)addByte;
+        } while (addByte != 0x00);
+        return ret;
     }
+
+//    public static string ReadNT(BinaryReader stream)
+//     {
+//        byte[] utf8 = new byte[2048];
+//        int nIndex = 0;
+//        for (;;++nIndex)
+//        {
+//             MainClass.AddLog("index " + nIndex);
+//             byte b = ReadByte(stream);
+//             utf8[nIndex] = b;
+//             if (b == 0x00) break;
+//         }
+//        return Encoding.UTF8.GetString(utf8, 0, nIndex);
+//     }
 
     public static void WriteInt16Regular(BinaryWriter stream, short data)
     {
@@ -180,6 +185,7 @@ namespace OpenSMO
       WriteArr(arr);
     }
 
+
     public void WriteNT(string data)
     {
       byte[] writeBytes = new byte[data.Length + 1];
@@ -188,6 +194,38 @@ namespace OpenSMO
       writeBytes[data.Length] = 0;
       WriteArr(writeBytes);
     }
+
+
+      public void WriteNTu(string data)
+      {
+      byte[] utf8writeBytes = UTF8Encoding.UTF8.GetBytes(data);
+      byte[] writeBytes = new byte[utf8writeBytes.Length + 1];
+      utf8writeBytes.CopyTo(writeBytes, 0);
+      writeBytes[utf8writeBytes.Length] = 0;
+      WriteArr(writeBytes);
+      }
+
+
+//      public void WriteNTu(string data)
+//      {
+////	int length;
+//	byte[] writeBytes = UTF8Encoding.UTF8.GetBytes(data);
+////	length = writeBytes.Length;
+////        writeBytes[length] = 0;
+//	WriteArr(writeBytes);
+////	byte[] utf8data = UTF8Encoding.UTF8.GetBytes(data);
+////	byte[] writeBytes = new byte[utf8data.Length + 1];
+////	writeBytes =  UTF8Encoding.UTF8.GetBytes(data);
+////	writeBytes[utf8data.Length] = 0;
+////	WriteArr(writeBytes);
+//
+/////      byte[] utf8writeBytes = UTF8Encoding.UTF8.GetBytes(data);
+////      byte[] writeBytes = new byte[utf8writeBytes.Length + 1];
+////        utf8writeBytes.CopyTo(writeBytes, 0);
+////      return writeBytes;
+//      }
+
+
 
     public byte[] ReadArr(int count)
     {
@@ -226,5 +264,13 @@ namespace OpenSMO
       LastPacketSize -= ret.Length + 1;
       return ret;
     }
+//    public string ReadNTu()
+//    {
+//      string ret = StreamHelper.ReadNTu(user.tcpReader);
+//      LastPacketSize -= ret.Length + 1;
+//      return ret;
+//    }
+
+
   }
 }

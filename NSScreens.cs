@@ -4,11 +4,11 @@ namespace OpenSMO
 {
 	public enum NSScreen
 	{
-		Black = 0,
+		Loading = 0,
 		Room,
-		Unknown2,
+		blue,
 		Options,
-		Loading,
+		red,
 		Score,
 		Menu,
 		Lobby,

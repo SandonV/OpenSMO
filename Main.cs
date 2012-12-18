@@ -16,7 +16,7 @@ namespace OpenSMO
     public TcpListener tcpListener;
     public TcpListener tcpListenerRTS;
     public int FPS = 120;
-
+    public string userlist = "";
     public List<User> Users = new List<User>();
     public List<Room> Rooms = new List<Room>();
 
@@ -27,7 +27,7 @@ namespace OpenSMO
     public Config ServerConfig;
     public Scripting Scripting;
 
-    public static int Build = 8;
+    public static int Build = 6;
     public static MainClass Instance;
     public static DateTime StartTime;
 
@@ -90,58 +90,10 @@ namespace OpenSMO
       if (ServerConfig.Contains("Server_Version")) ServerVersion = (byte)int.Parse(ServerConfig.Get("Server_Version"));
       if (ServerConfig.Contains("Server_MaxPlayers")) ServerMaxPlayers = (byte)int.Parse(ServerConfig.Get("Server_MaxPlayers"));
 
-      Sql.Filename = ServerConfig.Get("Database_File");
-      Sql.Version = int.Parse(ServerConfig.Get("Database_Version"));
-      Sql.Compress = bool.Parse(ServerConfig.Get("Database_Compressed"));
-      Sql.Connect();
-
-      if (!Sql.Connected)
-        AddLog("Please check your SQLite database.", true);
-
-      Sql.ReportErrors = false;
-      Hashtable[] fixedRooms = Sql.Query("SELECT * FROM fixedrooms;");
-      Sql.ReportErrors = true;
-
-      if (fixedRooms == null) {
-        AddLog("It appears there's no \"fixedrooms\" table, creating one now.");
-        Sql.Query(@"CREATE TABLE ""main"".""fixedrooms"" (
-          ""ID""  INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-          ""Name""  TEXT(255) NOT NULL,
-          ""Description""  TEXT(255),
-          ""Password""  TEXT(255),
-          ""Free""  INTEGER,
-          ""MOTD""  TEXT(255),
-          ""Operators""  TEXT(255));");
-      } else {
-        foreach (Hashtable room in fixedRooms) {
-          Room newRoom = new Room(this, null);
-          newRoom.Fixed = true;
-          newRoom.Name = room["Name"].ToString();
-          newRoom.Description = room["Description"].ToString();
-          newRoom.Password = room["Password"].ToString();
-          newRoom.Free = room["Free"].ToString() == "1";
-          newRoom.FixedMotd = room["MOTD"].ToString();
-
-          string[] strOps = room["Operators"].ToString().Split(',');
-          List<int> ops = new List<int>();
-          foreach (string op in strOps) {
-            if (op == "") {
-              continue;
-            }
-
-            int opID = 0;
-            if (int.TryParse(op, out opID)) {
-              ops.Add(opID);
-            } else {
-              AddLog("Invalid op ID '" + op + "'");
-            }
-          }
-          newRoom.FixedOperators = ops.ToArray();
-          Rooms.Add(newRoom);
-
-          AddLog("Added fixed room '" + newRoom.Name + "'");
-        }
-      }
+      MySql.Host = ServerConfig.Get("MySql_Host");
+      MySql.User = ServerConfig.Get("MySql_User");
+      MySql.Password = ServerConfig.Get("MySql_Password");
+      MySql.Database = ServerConfig.Get("MySql_Database");
 
       ReloadScripts();
 
@@ -205,7 +157,6 @@ namespace OpenSMO
     public void UserThread()
     {
       while (true) {
-        Sql.Update();
 
         try {
           for (int i = 0; i < Scripting.UpdateHooks.Count; i++) {
@@ -214,11 +165,24 @@ namespace OpenSMO
         } catch (Exception ex) { Scripting.HandleError(ex); }
 
         for (int i = 0; i < Users.Count; i++)
-          Users[i].Update();
-        for (int i = 0; i < Rooms.Count; i++)
-          Rooms[i].Update();
+           {
+           if (Users[i] != null) 
+             {
+              Users[i].Update();
+             }
+           }
 
-        Thread.Sleep(1000 / FPS);
+        for (int i = 0; i < Rooms.Count; i++)
+          {
+            if (Rooms[i] != null)
+              {
+                Rooms[i].Update();
+              }
+          }
+
+        Thread.Sleep(2);
+
+//        Thread.Sleep(1000 / FPS);
       }
     }
 
@@ -238,7 +202,8 @@ namespace OpenSMO
 
     public string JsonSafe(string str)
     {
-      return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
+      return OpenSMO.User.Utf8Decode(str).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
+	//return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
     }
 
     public void RTSThread()
@@ -252,6 +217,8 @@ namespace OpenSMO
           string IP = newTcpClient.Client.RemoteEndPoint.ToString().Split(':')[0];
 
           NetworkStream stream = newTcpClient.GetStream();
+	  stream.ReadTimeout = 500;
+	  stream.WriteTimeout = 500;
           StreamReader reader = new StreamReader(stream);
           StreamWriter writer = new StreamWriter(stream) { AutoFlush = true };
 
@@ -267,6 +234,7 @@ namespace OpenSMO
                   responseBuffer = "[";
                   foreach (Room room in Rooms) {
                     if (!room.Secret && !room.Owner.ShadowBanned) {
+		      string playerlist;
                       responseBuffer += "[";
                       responseBuffer += "\"" + room.ID + "\",";
                       responseBuffer += "\"" + JsonSafe(room.Name) + "\",";
@@ -275,7 +243,11 @@ namespace OpenSMO
                       responseBuffer += room.Users.Count + ",";
                       responseBuffer += "\"" + room.Status.ToString() + "\",";
                       responseBuffer += "\"" + JsonSafe(room.CurrentSong.Name) + "\",";
-                      responseBuffer += "\"" + JsonSafe(room.CurrentSong.Artist) + "\"";
+                      responseBuffer += "\"" + JsonSafe(room.CurrentSong.Artist) + "\",";
+
+		      userlist = room.GetRoomUsers();
+		      responseBuffer += "\"" + userlist.TrimEnd(',') + "\"";
+		      userlist = "";
                       responseBuffer += "]";
 
                       if (Rooms.Last() != room)
@@ -284,6 +256,21 @@ namespace OpenSMO
                   }
                   responseBuffer += "]";
                   break;
+
+//		case "a":
+//			responseBuffer = "[";
+//			User[] serverusers = User.GetUsersInServer();
+//			{
+//				foreach (User user in serverusers)
+//				{
+//					responseBuffer += "[";
+//					responseBuffer += "\"" + user.User_Name + "\",";
+//					responseBuffer += "],";
+//				}
+//			}
+//			responseBuffer += "]";
+//			break;
+				
 
                 case "g":
                   string roomID = parse[1];
@@ -316,11 +303,32 @@ namespace OpenSMO
                         responseBuffer += "[";
                         responseBuffer += user.User_ID + ",";
                         responseBuffer += "\"" + JsonSafe(user.User_Name) + "\",";
-                        responseBuffer += "\"" + user.Combo + " / " + user.MaxCombo + "\",";
+                        responseBuffer += "\"" + user.Combo + "\",";
                         responseBuffer += user.SMOScore + ",";
                         responseBuffer += "\"" + user.Grade + "\",";
                         responseBuffer += "\"" + user.GameDifficulty + "\",";
-                        responseBuffer += "\"" + JsonSafe(user.GamePlayerSettings) + "\"";
+                        responseBuffer += "\"" + JsonSafe(user.GamePlayerSettings) + "\",";
+			responseBuffer += "\"" + JsonSafe(user.GamePlayerSettings) + "\",";
+			if (user.Notes == null)
+			{
+				for (int i = 0; i < 9; i++ )
+				{
+					responseBuffer += "\"0\",";
+				}
+			}
+			else
+			{
+	               		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Flawless].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Perfect].ToString()) + "\",";
+	             		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Great].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Good].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Barely].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Miss].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.Held].ToString()) + "\",";
+	              		responseBuffer += "\"" + JsonSafe(user.Notes[(int)NSNotes.NG].ToString()) + "\",";
+			}
+			responseBuffer += "\"" + user.MaxCombo + "\",";
+			responseBuffer += "\"" + user.percent + "\"";
                         responseBuffer += "],";
                       }
                       responseBuffer += "]";
@@ -333,7 +341,8 @@ namespace OpenSMO
               writer.WriteLine("Content-Type: text/plain");
               writer.WriteLine("access-control-allow-origin: *");
               writer.WriteLine("access-control-allow-credentials: true");
-              writer.WriteLine("Content-Length: " + responseBuffer.Length);
+	      //Breaks incorrectly calculated utf8
+              //writer.WriteLine("Content-Length: " + responseBuffer.Length);
               writer.WriteLine("Connection: close");
               writer.WriteLine();
               writer.Write(responseBuffer);
@@ -363,17 +372,17 @@ namespace OpenSMO
       Console.WriteLine(line);
       if (Bad) Console.ForegroundColor = ConsoleColor.Gray;
 
-      string logFilename = Instance.ServerConfig.Get("Server_LogFile");
-      if (logFilename != "") {
-        StreamWriter writer;
-        if (File.Exists(logFilename))
-          writer = File.AppendText(logFilename);
-        else
-          writer = new StreamWriter(File.Create(logFilename));
-
-        writer.WriteLine(line);
-        writer.Close();
-      }
+//      string logFilename = Instance.ServerConfig.Get("Server_LogFile");
+//      if (logFilename != "") {
+//        StreamWriter writer;
+//        if (File.Exists(logFilename))
+//          writer = File.AppendText(logFilename);
+//        else
+//          writer = new StreamWriter(File.Create(logFilename));
+//
+//        writer.WriteLine(line);
+//        writer.Close();
+//      }
     }
 
     public void SendChatAll(string Message)
