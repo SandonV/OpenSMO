@@ -106,10 +106,10 @@ namespace OpenSMO {
                     double songTime = user.SongTime.Elapsed.TotalSeconds;
 		    if (songTime != 0)
 		    {
-                        if (songTime > (int)newsong["Time"])
-		        {
+//                        if (songTime > (int)newsong["Time"])
+//		        {
                             MySql.Query("UPDATE songs SET Time=" + songTime.ToString().Replace(',', '.') + " WHERE ID=" + newsong["ID"]);
-			}
+//			}
                     }
 		}
 	     }

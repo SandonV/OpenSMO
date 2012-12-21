@@ -138,13 +138,72 @@ namespace OpenSMO
       get { return _Grade; }
       set
       {
-        if (bool.Parse(mainClass.ServerConfig.Get("Game_FullComboIsAA"))) {
-          if (value >= NSGrades.A && FullCombo) {
+	if (value >= NSGrades.AAA && isAAAA) {
+	_Grade = NSGrades.AAAA;
+	return;
+	}
+	else if (value >= NSGrades.AA && isAAA) {
+	    _Grade = NSGrades.AAA;
+	    return;
+	    }
+            else if (value >= NSGrades.A && FullCombo) {
             _Grade = NSGrades.AA;
-            return;
-          }
-        }
-        _Grade = value;
+            return;		
+            }
+
+
+	if ( _Grade != NSGrades.F )
+	{
+		  int marv = Notes[(int)NSNotes.Flawless];
+	          int perf = Notes[(int)NSNotes.Perfect];
+	          int grea = Notes[(int)NSNotes.Great];
+	          int good = Notes[(int)NSNotes.Good];
+	          int boo  = Notes[(int)NSNotes.Barely];
+	          int miss = Notes[(int)NSNotes.Miss];
+	          int ok   = Notes[(int)NSNotes.Held];
+	          int ng   = Notes[(int)NSNotes.NG];
+		  int pnt = (2 * (marv + perf)) + grea - (4 * boo) - (8 * miss) + (6 * ok);
+		  int maxpnt = 2 * (marv + perf + grea + good + boo + miss) + 6 * (ok + ng);
+		  if ( maxpnt != 0 )
+		  {
+			  float perc = ((100f / maxpnt) * pnt);
+			  if (perc >= 93)
+			  {
+				_Grade = NSGrades.AA;
+				return;
+			  }
+			  else if (perc >= 80)
+				{
+					_Grade = NSGrades.A;
+					return;
+				}
+				else if (perc >= 65)
+					{
+						_Grade = NSGrades.B;
+						return;
+					}
+					else if (perc >= 45)
+						{
+							_Grade = NSGrades.C;
+							return;
+						}
+						else if (perc < 45)
+							{
+								_Grade = NSGrades.D;
+								return;
+							}
+		  }
+		  else
+		  {
+			_Grade = NSGrades.AAAA;
+		  }
+	}
+	else
+	{
+		_Grade = NSGrades.F;
+	}
+	  
+//        _Grade = value;
       }
     }
 
@@ -203,6 +262,29 @@ namespace OpenSMO
         return badCount == 0;
       }
     }
+
+    public bool isAAA
+    {
+      get
+      {
+        int badCount = 0;
+        for (int i = 0; i <= 6; i++)
+          badCount += Notes[i];
+        return badCount == 0;
+      }
+    }
+
+    public bool isAAAA
+    {
+      get
+      {
+        int badCount = 0;
+        for (int i = 0; i <= 7; i++)
+          badCount += Notes[i];
+        return badCount == 0;
+      }
+    }
+
 
 
     public User(MainClass mainClass, TcpClient tcpClient)
@@ -622,7 +704,8 @@ namespace OpenSMO
 
       if (newScreen == NSScreen.Lobby) {
         CurrentRoom = null;
-
+	
+	CurrentRoomRights = RoomRights.Player;
 	CurrentScreen = newScreen;
         SendRoomList();
         SendRoomPlayers();
@@ -780,6 +863,59 @@ namespace OpenSMO
 	return jumpxp;
     }
 
+
+
+
+    public static int Judge(double NoteOffset)
+    {
+        double smarv  = -.02259;
+        double sperf  = -.04509;
+        double sgreat = -.09009;
+        double sgood  = -.13509;
+        double sboo   = -.18909;
+
+
+              if ((NoteOffset > smarv) && (NoteOffset < (smarv * -1d)))
+              {
+                      return 8;
+              }
+              else if ((NoteOffset > sperf) && (NoteOffset < (sperf * -1d)))
+                      {
+                              return 7;
+                      }
+                      else if ((NoteOffset > sgreat) && (NoteOffset < (sgreat * -1d)))
+                              {
+                                      return 6;
+                              }
+                              else if ((NoteOffset > sgood) && (NoteOffset < (sgood * -1d)))
+                                      {
+                                              return 5;
+                                      }
+                                      else if ((NoteOffset > sboo) && (NoteOffset < (sboo * -1d)))
+                                              {
+                                                      return 4;
+                                              }
+		else
+		{
+			return 3;
+		}
+    }
+
+
+    public static int GetJudge(int NoteHit, double NoteOffset)
+    {
+	int JudgeNote = 0;
+
+        switch (NoteHit)
+        {
+        case 8: case 7: case 6: case 5: case 4:
+		JudgeNote = Judge(NoteOffset);
+		return JudgeNote;
+	default:
+		return (int)NoteHit;
+        }
+    }
+
     public static int GetTiming(int NoteHit, double NoteOffset, int timing)
     {
 	//Default timing windows
@@ -852,13 +988,15 @@ namespace OpenSMO
 
         NoteHit = gsuCtr;
         NoteOffset = gsuOffset;
+	NoteHit = (NSNotes)GetJudge((int)NoteHit, NoteOffset);
+
 //        MainClass.AddLog("NoteHit: " + NoteHit);
 //        MainClass.AddLog("NoteOffset: " + NoteOffset);
 //	timing = GetTiming((int)NoteHit, NoteOffset, timing);
 //	MainClass.AddLog(this.User_Name"'s Timing: " + timing);
         try
         {
-          Notes[(int)gsuCtr]++;
+          Notes[(int)NoteHit]++;
         } catch (Exception e) {
             MainClass.AddLog("gsuCtr:" + gsuCtr);
             foreach(var note in Notes)
@@ -887,7 +1025,7 @@ namespace OpenSMO
 
 	servcombo = Combo;
 
-	timing = GetTiming((int)NoteHit, NoteOffset, timing);
+//	timing = GetTiming((int)NoteHit, NoteOffset, timing);
 
 	perfmarv = GetPerfMarv((int)NoteHit, perfmarv, jump);
 	if ( perfmarv > 249 )
@@ -1117,8 +1255,16 @@ namespace OpenSMO
 	    		pickSongPlayed = (int)pickSongPlayedRow["Played"];
 		}
 	    }
+//	    int asciilength = pickName.Length;
 
-            mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + pickName + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.")), CurrentRoom);
+//	    int utf8length = Utf8Decode(pickName).Length;
+//	    int textdiff = asciilength - utf8length;
+	    string chatname =  Utf8Decode(pickName);
+//	    for (int i = 0; i < textdiff; i++)
+//	    {
+//			chatname = "\n" + chatname + "\n";
+//	    }
+            mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + chatname + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.")), CurrentRoom);
 	    newjoin = false;
               foreach (User user in pickUsers) {
                 user.SendSong(false);
