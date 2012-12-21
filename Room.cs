@@ -20,6 +20,7 @@ namespace OpenSMO {
         public int SendStatsTimer = 0;
         public Hashtable Meta = new Hashtable();
 	public string myusers = "";
+	public int roomid = 0;
 
         public User Owner;
         public List<User> Users {
@@ -69,7 +70,6 @@ namespace OpenSMO {
                         }
                 }
                 return myusers;
-                myusers ="";
         }
 
 

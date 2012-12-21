@@ -34,7 +34,6 @@ namespace OpenSMO
     public string User_Game = "";
     public int connectioncount = 0;
     private Room _CurrentRoom = null;
-    public int id = 0;
     public Room CurrentRoom
     {
       get { return _CurrentRoom; }
@@ -167,31 +166,41 @@ namespace OpenSMO
 		  if ( maxpnt != 0 )
 		  {
 			  float perc = ((100f / maxpnt) * pnt);
-			  if (perc >= 93)
+			  if (isAAAA)
 			  {
-				_Grade = NSGrades.AA;
+				 _Grade = NSGrades.AAAA;
 				return;
 			  }
-			  else if (perc >= 80)
+			  else if (isAAA)
 				{
-					_Grade = NSGrades.A;
-					return;
+				_Grade = NSGrades.AAA;
+				return;
 				}
-				else if (perc >= 65)
+				  else if (perc >= 93)
+				  {
+					_Grade = NSGrades.AA;
+					return;
+				  }
+				  else if (perc >= 80)
 					{
-						_Grade = NSGrades.B;
+						_Grade = NSGrades.A;
 						return;
 					}
-					else if (perc >= 45)
+					else if (perc >= 65)
 						{
-							_Grade = NSGrades.C;
+							_Grade = NSGrades.B;
 							return;
 						}
-						else if (perc < 45)
+						else if (perc >= 45)
 							{
-								_Grade = NSGrades.D;
+								_Grade = NSGrades.C;
 								return;
 							}
+							else if (perc < 45)
+								{
+									_Grade = NSGrades.D;
+									return;
+								}
 		  }
 		  else
 		  {
@@ -257,7 +266,7 @@ namespace OpenSMO
       get
       {
         int badCount = 0;
-        for (int i = 0; i <= 5; i++)
+        for (int i = 3; i <= 5; i++)
           badCount += Notes[i];
         return badCount == 0;
       }
@@ -268,7 +277,7 @@ namespace OpenSMO
       get
       {
         int badCount = 0;
-        for (int i = 0; i <= 6; i++)
+        for (int i = 3; i <= 6; i++)
           badCount += Notes[i];
         return badCount == 0;
       }
@@ -279,7 +288,7 @@ namespace OpenSMO
       get
       {
         int badCount = 0;
-        for (int i = 0; i <= 7; i++)
+        for (int i = 3; i <= 7; i++)
           badCount += Notes[i];
         return badCount == 0;
       }
@@ -662,6 +671,7 @@ namespace OpenSMO
 
     public void SendSongStartTo(User[] checkSyncPlayers)
     {
+      CurrentRoom.roomid = Data.CreateRoomDB(this);
       foreach (User user in checkSyncPlayers) {
         user.Synced = false;
         user.SongTime.Restart();
@@ -868,11 +878,11 @@ namespace OpenSMO
 
     public static int Judge(double NoteOffset)
     {
-        double smarv  = -.02259;
-        double sperf  = -.04509;
-        double sgreat = -.09009;
-        double sgood  = -.13509;
-        double sboo   = -.18909;
+        double smarv  = -.02255;
+        double sperf  = -.04505;
+        double sgreat = -.09005;
+        double sgood  = -.13505;
+        double sboo   = -.18905;
 
 
               if ((NoteOffset > smarv) && (NoteOffset < (smarv * -1d)))
@@ -919,11 +929,11 @@ namespace OpenSMO
     public static int GetTiming(int NoteHit, double NoteOffset, int timing)
     {
 	//Default timing windows
-	double smarv  = -.02259;
-	double sperf  = -.04509;
-	double sgreat = -.09009;
-	double sgood  = -.13509;
-	double sboo   = -.18909;
+	double smarv  = -.02255;
+	double sperf  = -.04505;
+	double sgreat = -.09005;
+	double sgood  = -.13505;
+	double sboo   = -.18905;
 	switch (NoteHit)
 	{
 	case 8:
@@ -1259,12 +1269,12 @@ namespace OpenSMO
 
 //	    int utf8length = Utf8Decode(pickName).Length;
 //	    int textdiff = asciilength - utf8length;
-	    string chatname =  Utf8Decode(pickName);
+//	    string chatname =  Utf8Decode(pickName);
 //	    for (int i = 0; i < textdiff; i++)
 //	    {
 //			chatname = "\n" + chatname + "\n";
 //	    }
-            mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + chatname + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.")), CurrentRoom);
+            mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + pickName + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.")), CurrentRoom);
 	    newjoin = false;
               foreach (User user in pickUsers) {
                 user.SendSong(false);

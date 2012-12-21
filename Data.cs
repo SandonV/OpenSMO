@@ -24,6 +24,26 @@ namespace OpenSMO {
             return resCheck[0];
 	}
 
+	public static int CreateRoomDB(User user)
+	{
+		if (user.CurrentRoom == null || user.CurrentRoom.CurrentSong == null)
+		{
+			return -1;
+		}
+		else
+		{
+			string owner = user.CurrentRoom.Owner.User_Name;
+			string name = user.CurrentRoom.Name;
+			string desc = user.CurrentRoom.Description;
+			MySql.Query("INSERT INTO rooms (Name,Description,Owner) VALUES(\"" + name + "\",\"" + desc + "\",\"" + owner + "\")");
+			MainClass.AddLog("Owner: " + owner + " Name: " + name + "Description: " + desc);
+	                Hashtable[] getroomid = MySql.Query("SELECT ID from rooms where Name = \"" + name + "\" and Description = \"" + desc + "\" and Owner = \"" + owner + "\" ORDER BY created DESC LIMIT 1");
+	                Hashtable roomidhash = getroomid[0];
+	                int roomid = (int)roomidhash["ID"];
+			return roomid;
+		}		
+	}
+
         public static Hashtable AddSong(bool Start, User user) {
             if (user.CurrentRoom == null || user.CurrentRoom.CurrentSong == null || user.CurrentRoom.Reported)
                 return null;
@@ -116,8 +136,9 @@ namespace OpenSMO {
 
 
 
-		MainClass.AddLog("User ID  " +user.User_Table["ID"].ToString()  + "'s Final Timing: " + user.timing);
+//		MainClass.AddLog("User ID  " +user.User_Table["ID"].ToString()  + "'s Final Timing: " + user.timing);
 		MainClass.AddLog("User ID  " +user.User_Table["ID"].ToString()  + "'s Toasty Count: " + user.toasty);
+		MainClass.AddLog("User ID  " +user.User_Table["ID"].ToString()  + "'s Room ID: " + user.CurrentRoom.roomid);
             // Give player XP
             int XP = 0;
             for (int i = 3; i <= 8; i++)
@@ -228,9 +249,9 @@ namespace OpenSMO {
 
                 // Big-ass query right there...
                 if (!user.ShadowBanned) {
-                    MySql.Query("INSERT INTO stats (User,PlayerSettings,Song,Feet,Difficulty,Grade,Score,MaxCombo," +
+                    MySql.Query("INSERT INTO stats (User,PlayerSettings,Song,Room,Feet,Difficulty,Grade,Score,MaxCombo," +
                         "Note_0,Note_1,Note_Mine,Note_Miss,Note_Barely,Note_Good,Note_Great,Note_Perfect,Note_Flawless,Note_NG,Note_Held,Toasty,timing) VALUES(" +
-                        user.User_Table["ID"].ToString() + ",'" + playerSettings + "'," + songID.ToString() + "," + user.GameFeet.ToString() + "," + ((int)user.GameDifficulty).ToString() + "," + ((int)user.Grade).ToString() + "," + user.Score.ToString() + "," + user.MaxCombo.ToString() + "," +
+                        user.User_Table["ID"].ToString() + ",'" + playerSettings + "'," + songID.ToString() + "," + user.CurrentRoom.roomid.ToString() + "," + user.GameFeet.ToString() + "," + ((int)user.GameDifficulty).ToString() + "," + ((int)user.Grade).ToString() + "," + user.Score.ToString() + "," + user.MaxCombo.ToString() + "," +
                         user.Notes[0].ToString() + "," + user.Notes[1].ToString() + "," + user.Notes[2].ToString() + "," + user.Notes[3].ToString() + "," + user.Notes[4].ToString() + "," + user.Notes[5].ToString() + "," + user.Notes[6].ToString() + "," + user.Notes[7].ToString() + "," + user.Notes[8].ToString() + "," + user.Notes[9].ToString() + "," + user.Notes[10].ToString() + "," + user.toasty + "," + user.timing + ")");
                 		}
 			}
