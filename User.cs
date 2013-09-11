@@ -9,14 +9,131 @@ using System.Net;
 using System.Net.Sockets;
 using System.Data;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace OpenSMO
 {
   public enum UserRank : int { User, Moderator, Admin }
   public enum RoomRights : int { Player, Operator, Owner }
 
+  public class SongScanner
+  {
+	private User mUser;
+	private Hashtable[] mSongs;
+	private bool mScanning;
+	private int mCurrentSongIndex;
+	private string mCurrentPackName;
+	private int mCurrentPackID;
+	private int stopscan = 0;
+	public Stopwatch loadtime = new Stopwatch();
+	public SongScanner(User user)
+	{
+		mUser = user;
+		mScanning = false;
+	}
+
+	public bool IsScanning()
+	{
+		return mScanning;
+	}	
+	public void StopScan()
+	{
+		stopscan = 1;
+	}
+
+	public string GetCurrentPackName()
+	{
+		return mCurrentPackName;
+	}
+	public int GetCurrentPackID()
+	{
+		return mCurrentPackID;
+	}
+
+	public void LoadSongs(Hashtable[] songs)
+	{
+		loadtime.Restart();	
+		mSongs = songs;
+		mCurrentSongIndex = 0;
+	}
+
+	public bool SendNextSong()
+	{
+		if ((mCurrentSongIndex >= mSongs.Count()) || (stopscan == 1))
+		{
+			stopscan = 0;
+			mScanning = false;
+			mUser.Scanning = false;
+			mUser.scandone();
+		}
+		else
+		{
+                        if ( (mCurrentSongIndex != 0) && (mCurrentSongIndex % 100) == 0)
+                        {
+				int current = mSongs.Count();
+				int ms = (int)loadtime.ElapsedMilliseconds;
+                                float scanpercf;
+                                float etaf;
+                                scanpercf =  ((float)mCurrentSongIndex/(float)current)*100F;
+                                string scanperc = scanpercf.ToString("n2");
+                                etaf = ( (100F/scanpercf) * ( (float)ms / 1000F ) - ( (float)ms / 1000F) );
+                                string eta =  etaf.ToString("n1");
+				//string blah = "Total: "+current.ToString()+" Done: "+mCurrentSongIndex.ToString()+" Elapsed: "+ms.ToString();
+				//mUser.sendlog(blah);
+                                mUser.scanpercent(scanperc, eta);
+                        }
+
+			string title, subtitle, artist, titletrans, subtitletrans, artisttrans;
+			string titles, subtitles, artists;
+			Hashtable song = mSongs[mCurrentSongIndex];
+			title = (string)song["title"];
+			subtitle = (string)song["subtitle"];
+			artist	= (string)song["artist"];
+                        titletrans = (string)song["titletrans"];
+                        subtitletrans = (string)song["subtitletrans"];
+                        artisttrans  = (string)song["artisttrans"];
+
+			if (String.IsNullOrEmpty(titletrans))
+			{
+				titles = title;
+			}
+			else
+			{
+				titles = titletrans;
+			}
+
+                        if (String.IsNullOrEmpty(subtitletrans))
+                        {
+                                subtitles = subtitle;
+                        }
+                        else
+                        {
+                                subtitles = subtitletrans;
+                        }
+                        if (String.IsNullOrEmpty(artisttrans))
+                        {
+                                artists = artist;
+                        }
+                        else
+                        {
+                                artists = artisttrans;
+                        }
+
+			mCurrentPackName = (string)song["packname"];
+			mCurrentPackID = (int)song["packid"];
+
+			mUser.ScanSong(titles, subtitles, artists);
+			++mCurrentSongIndex;
+			mScanning = true;
+		}
+
+		return mScanning;
+	}
+  }
+
   public class User
   {
+    CultureInfo ci;
     public MainClass mainClass;
     public bool Connected = true;
     public bool ShadowBanned = false;
@@ -34,6 +151,8 @@ namespace OpenSMO
     public string User_Game = "";
     public int connectioncount = 0;
     private Room _CurrentRoom = null;
+    private SongScanner mSongScanner = null;
+    public Stopwatch SelectTime = new Stopwatch();
     public Room CurrentRoom
     {
       get { return _CurrentRoom; }
@@ -110,6 +229,8 @@ namespace OpenSMO
 
 
     public bool CanPlay = true;
+    public bool Scanning = false;
+    public bool ScanResponse = false;
     public bool Spectating = false;
     public bool ShowOffset = false;
     public bool Synced = false;
@@ -223,6 +344,7 @@ namespace OpenSMO
     public float Tmaxpnt = 0;
     public float percentf = 0;
     public int timing = 0;
+    public string Pack;
     public int jump = 0;
     public int jumpxp = 0;
     public int perfmarv = 0;
@@ -304,8 +426,8 @@ namespace OpenSMO
       this.User_IP = tcpClient.Client.RemoteEndPoint.ToString().Split(':')[0];
 
       NetworkStream stream = tcpClient.GetStream();
-      stream.ReadTimeout = 250;
-      stream.WriteTimeout = 250;
+      stream.ReadTimeout = 500;
+      stream.WriteTimeout = 500;
       this.tcpWriter = new BinaryWriter(stream);
       this.tcpReader = new BinaryReader(stream);
 
@@ -335,12 +457,197 @@ namespace OpenSMO
       return false;
     }
 
+	public void friendlist()
+	{
+        Hashtable[] checkforusers = MySql.Query("select * from friends where user = " + User_ID.ToString() + "");
+        User[] allusersfriends = GetUsersInServer();
+	        if (checkforusers.Count() != 0 )
+	        {
+	                for (int i = 0; i < checkforusers.Count(); i++)
+	                {
+	                        foreach (User user in allusersfriends)
+	                        {
+	                                if (user.User_ID == (int)checkforusers[i]["friend"])
+	                                {
+						string friendroom;
+						if ( user.CurrentRoom == null)
+						{
+							friendroom = "Lobby";
+						}
+						else
+						{
+							friendroom = user.CurrentRoom.Name;
+						}
+	                                        SendChatMessage(Func.ChatColor("ffffff") + "'" + user.NameFormat() + "'" + Func.ChatColor("ffff00") + ":  " + "(" + friendroom + ")" + Func.ChatColor("ffffff"));
+	                                }
+	                        }
+	                }
+	        }
+	}
+	public void sendlog(string logdata)
+	{
+		MainClass.AddLog(logdata);
+	}
+
+	public void scanpercent(string scanperc, string eta)
+	{
+		SendChatMessage("Scan Progress for "+ NameFormat() +": " + scanperc +"% Completed. ETA: " + eta + "s Remaining");
+	}
+
+	public void scandone()
+	{
+		mainClass.SendChatAll("Scan Completed for " + NameFormat()+" ", CurrentRoom);
+	}
+
+        public void stopscan()
+        {
+		mSongScanner = new SongScanner(this);
+		if(mSongScanner.IsScanning())
+		{
+			mSongScanner.StopScan();
+		}
+		Scanning = false;
+        }
+
+	    public void SendChatPM(string Username, string Message)
+	    {
+
+			if (Username.Length > 2 )
+			{
+				int suceeded = 0;
+				ci = new CultureInfo("en-US");
+				List<User> users  = new List<User>(mainClass.Users);
+		              foreach (User user in users)
+				{
+			                if (user.User_Name.StartsWith(Username, true, ci))
+					{
+						suceeded = 1;
+			                	user.SendChatMessage(Message);
+						MainClass.AddLog("PM From " + User_Name + " To: " + user.User_Name + " Me: " + Message);
+						SendChatMessage("Sent PM to: " +  user.NameFormat() + "." );
+					}
+				}
+				if (suceeded == 0 )
+				{
+					 SendChatMessage("User: " + Func.ChatColor("ff0000") + Username + " " + Func.ChatColor("ffffff") + "not found on the server. PM failed.");
+				}
+			}else
+			{
+				SendChatMessage(Func.ChatColor("ff0000") + "You must give me a username that is 3 characters or longer" + Func.ChatColor("ffffff"));
+			}
+	    }
+
+
+	public void scan()
+	{
+		if (Scanning)
+		{
+			SendChatMessage("Scan already in progress");
+		}
+		else
+		{
+			if (CurrentRoom == null)
+			{
+				SendChatMessage("Scanning can not be done from the Lobby. Join a room and then run /scan");
+			}
+			else
+			{
+				MySql.Query("DELETE FROM userpacks where userid = '" + User_ID + "'"); 
+				mainClass.SendChatAll("Scan Started for " + NameFormat()+" ", CurrentRoom);
+				mSongScanner = new SongScanner(this);
+				Scanning = true;
+				Hashtable[] packs = MySql.Query("select packname, title, subtitle, artist, packidentifiertrans.packid, titletrans, subtitletrans, artisttrans from packsongstrans, packidentifiertrans, packs where packidentifiertrans.packsongid = packsongstrans.id and packidentifiertrans.packid = packs.id order by packname asc");
+				mSongScanner.LoadSongs(packs);
+		
+				mSongScanner.SendNextSong();
+			}
+		}
+	}
+
+	public void showpacks()
+	{
+		string userpacks = "";
+		Hashtable[] showpacks = MySql.Query("select packs.abr as 'packname'  from userpacks,packs where packs.id = userpacks.packid and userpacks.userid = "+User_ID);
+		if (showpacks.Count() == 0)
+		{
+			SendChatMessage("You have no Packs.");
+			return;
+		}
+		foreach(Hashtable showpackshash in showpacks)
+		{
+			userpacks += (string)showpackshash["packname"];
+			userpacks += ", ";
+		}
+		userpacks=userpacks.Remove(userpacks.Length-2);
+		mainClass.SendChatAll(NameFormat()+"'s packs: " + userpacks, CurrentRoom);
+	}
+
+	public void commonpacks()
+	{
+		if (CurrentRoom == null)
+		{
+			SendChatMessage("Checking common packs can not be done from the Lobby. Join a room and then run /commonpacks");
+			return;
+		}
+		User[] users = GetUsersInRoom();
+		string useridquerystring = "";
+		string commonpacks = "";
+		int packcount = 0;
+		int allusers = 0;
+		int usercount = CurrentRoom.Users.Count();
+		string packsperuser = "Users: ";
+		foreach (User user in users)
+		{
+			Hashtable haspacks=MySql.Query("SELECT count(*) as 'count' from userpacks where userid  =  " + user.User_ID)[0];
+			int pcount = (int)haspacks["count"];
+			if (pcount > 0)
+			{
+				++allusers;
+			}
+			else
+			{
+				 mainClass.SendChatAll(user.NameFormat() + " " +  Func.ChatColor("ffffff") + "Has not ran /scan yet or has no packs.", CurrentRoom);
+			}
+			packsperuser += user.NameFormat() + "("+pcount+"), ";
+			useridquerystring += useridquerystring + "userid = " + user.User_ID + " or ";
+		}
+		packsperuser=packsperuser.Remove(packsperuser.Length-2);
+		if (allusers == usercount)
+		{
+			useridquerystring=useridquerystring.Remove(useridquerystring.Length-3);
+			Hashtable[] common = MySql.Query("select * from (select packs.abr as 'packname', packid,count(*) as count from userpacks,packs where packs.id = userpacks.packid and (" + useridquerystring + ") group by packid) as tmptable where count >="+usercount);
+			mainClass.SendChatAll(packsperuser, CurrentRoom);
+			if (common.Count() == 0)
+			{
+			
+				mainClass.SendChatAll(Func.ChatColor("aa0000") + "No packs in Common!" + Func.ChatColor("ffffff"), CurrentRoom);
+			}
+			else
+			{
+				foreach(Hashtable commonhash in common)
+				{
+					commonpacks += (string)commonhash["packname"];
+					commonpacks += ", ";
+					++packcount;
+				}
+				commonpacks=commonpacks.Remove(commonpacks.Length-2);
+				mainClass.SendChatAll("CP(" + packcount + "): "+commonpacks, CurrentRoom);
+			}
+		}
+	}
+
     public void Kick()
     {
       MainClass.AddLog("Client '" + this.User_Name + "' kicked.");
       if (this.CurrentRoom != null) this.CurrentRoom = null;
       this.Disconnect();
     }
+
+	public void roomban()
+	{
+		MainClass.AddLog("Client '" + this.User_Name + "' kicked and banned from room: " + this.CurrentRoom.Name);
+		this.CurrentRoom.banned.Add(this.User_ID);
+	}
 
     public void Ban()
     {
@@ -371,6 +678,32 @@ namespace OpenSMO
         this.CurrentRoom.Users.Remove(this);
       this.tcpClient.Close();
       this.Connected = false;
+        User[] serverusers = GetUsersInLobby();
+        foreach (User user in serverusers)
+	{
+		user.SendRoomPlayers();
+	}
+
+        if ( (this.User_Name != "") && (this.User_Name != null) )
+        {
+                Hashtable[] checkforfriends = MySql.Query("select * from friends where friend = " + User_ID.ToString() + "");
+                User[] allusers = GetUsersInServer();
+                if (checkforfriends.Count() != 0 )
+                {
+                        for (int i = 0; i < checkforfriends.Count(); i++)
+                        {
+                                foreach (User user in allusers)
+                                {
+                                        if (user.User_ID == (int)checkforfriends[i]["user"])
+                                        {
+                                                string time = DateTime.Now.ToString("HH:mm:ss");
+                                                user.SendChatMessage(Func.ChatColor("ffff00") + "Your friend: " + Func.ChatColor("ffffff") + "'" +NameFormat() + "'" + Func.ChatColor("ffff00") + " has disconnected from the server at " + time + ".");
+                                        }
+                                }
+                        }
+                }
+        }
+
     }
 
     public string NameFormat()
@@ -445,7 +778,8 @@ namespace OpenSMO
       if (CurrentRoom != null) {
         SendRoomList();
 
-        foreach (User user in mainClass.Users)
+	List<User> userlist  = new List<User>(mainClass.Users);
+        foreach (User user in userlist)
           user.SendRoomPlayers();
 
         ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
@@ -458,10 +792,11 @@ namespace OpenSMO
 
         mainClass.SendChatAll(NameFormat() + Func.ChatColor("ffffff") + " joined the room.", CurrentRoom);
 	newjoin = true;
-        User[] users = GetUsersInRoom();
-        foreach (User user in users){
-	user.SendSong(false);
-	}
+	//MainClass.AddLog("Room Song: '"+CurrentRoom.CurrentSong.Name+"','"+CurrentRoom.CurrentSong.SubTitle+"','"+CurrentRoom.CurrentSong.Artist+"'");
+	        User[] users = GetUsersInRoom();
+	        foreach (User user in users){
+		user.SendSong(false);
+		}
       } else
         MainClass.AddLog("Not supported: Kicking from room. Fixme! User::SendToRoom", true);
     }
@@ -469,25 +804,27 @@ namespace OpenSMO
     public User[] GetUsersInRoom()
     {
       List<User> ret = new List<User>();
-      foreach (User user in mainClass.Users) {
-        if (user.CurrentRoom == this.CurrentRoom)
-          ret.Add(user);
-      }
-      return ret.ToArray();
+		List<User> users  = new List<User>(mainClass.Users);
+	      foreach (User user in users) {
+	        if (user.CurrentRoom == this.CurrentRoom)
+	          ret.Add(user);
+	      }
+	      return ret.ToArray();
     }
 
     public User[] GetUsersInLobby()
     {
       List<User> ret = new List<User>();
-      foreach (User user in mainClass.Users) {
-        if (user.CurrentRoom != null)
-	{
-	}
-	else
-	{
-          ret.Add(user);
-	}
-      }
+		List<User> users  = new List<User>(mainClass.Users);
+	      foreach (User user in users) {
+	        if (user.CurrentRoom != null)
+		{
+		}
+		else
+		{
+	          ret.Add(user);
+		}
+	      }
       return ret.ToArray();
     }
 
@@ -503,9 +840,10 @@ namespace OpenSMO
     public User[] GetUsersInServer()
     {
       List<User> ret = new List<User>();
-      foreach (User user in mainClass.Users) {
-          ret.Add(user);
-      }
+		List<User> users  = new List<User>(mainClass.Users);
+	      foreach (User user in users) {
+	          ret.Add(user);
+	      }
       return ret.ToArray();
     }
 
@@ -600,6 +938,21 @@ namespace OpenSMO
       ez.WriteNT(CurrentRoom.CurrentSong.SubTitle);
       ez.SendPack();
     }
+
+
+	public void ScanSong(string title, string subtitle, string artist)
+	{
+		title = Utf8Encode(title);
+		subtitle = Utf8Encode(subtitle);
+		artist = Utf8Encode(artist);
+		ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCRSG));
+		ez.Write1((byte)1);
+		ez.WriteNT(title);
+		ez.WriteNT(artist);
+		ez.WriteNT(subtitle);
+		ez.SendPack();
+	}
+
 
     public void SendGameStatusColumn(byte ColumnID)
     {
@@ -926,6 +1279,29 @@ namespace OpenSMO
         }
     }
 
+    public static string Human(int seconds)
+    {
+	int minutes = seconds/60;
+	string human = "";
+	if (minutes > 0)
+	{
+		seconds= seconds - (minutes * 60);
+		if ( seconds < 10 )
+		{
+			 human = minutes.ToString() + "m0" + seconds.ToString() + "s";
+		}
+		else
+		{
+			human = minutes.ToString() + "m" + seconds.ToString() + "s";
+		}
+	}
+	else
+	{
+		human = seconds.ToString() + "s";
+	}
+	return human;
+    }
+
     public static int GetTiming(int NoteHit, double NoteOffset, int timing)
     {
 	//Default timing windows
@@ -1172,6 +1548,13 @@ namespace OpenSMO
         return Encoding.UTF8.GetString(Encoding.GetEncoding(28591).GetBytes(utf8me));
     }
 
+	public static string Utf8Encode(string text)
+	{
+		//return Encoding.UTF8.GetString(Encoding.GetEncoding(28591).GetBytes(text));
+		return Encoding.GetEncoding(28591).GetString(Encoding.GetEncoding(65001).GetBytes(text));
+	}
+
+
 
     public void NSCRSG()
     {
@@ -1187,6 +1570,44 @@ namespace OpenSMO
       string pickName = ez.ReadNT();
       string pickArtist = ez.ReadNT();
       string pickAlbum = ez.ReadNT();
+
+      int timewaited;
+
+      if ( SelectTime.ElapsedMilliseconds < 751 )
+      {
+	timewaited = 0;
+      }
+      else
+      {
+	timewaited = 1;
+      }
+      SelectTime.Restart();
+
+      if (mSongScanner != null && mSongScanner.IsScanning())
+      {
+              string packname = mSongScanner.GetCurrentPackName();
+              int packid = mSongScanner.GetCurrentPackID();
+	      switch (pickResponseStatus)
+	      {
+	        case 0: // Player has song
+	          CanPlay = SyncNeeded = true;
+		  //Has pack or not debug output in room
+	          //mainClass.SendChatAll(NameFormat() + " has pack: " + packname + " ID: " + packid, CurrentRoom);
+		  MySql.Query("INSERT INTO userpacks (userid,packid) VALUES('" + User_ID + "','" + packid + "')");
+                  ScanResponse = true;
+	          ez.Discard();
+	          break;
+	
+	        case 1: // Player does not have song
+	          CanPlay = SyncNeeded = false;
+		  ScanResponse = true;
+	          ez.Discard();
+	          break;
+	      }
+
+	      mSongScanner.SendNextSong();
+	      return;
+	}
 
 
       switch (pickResponseStatus) {
@@ -1218,11 +1639,19 @@ namespace OpenSMO
           canStart = false;
           cantStartReason = user.NameFormat() + " is not ready yet!";
           break;
+        } else if (user.Scanning) {
+          canStart = false;
+          cantStartReason = user.NameFormat() + " is Pack Scanning!";
+	  break;
+	} else if (timewaited == 0) {
+	  canStart = false;
+	  cantStartReason = "Please wait .75 seconds!!!";
+	  break;
         } else if (!user.CanPlay && !isNewSong && !newjoin ) {
           canStart = false;
           cantStartReason = user.NameFormat() + " Lacks so not starting!";
           break;
-        }
+	}
       }
 
       if (CurrentRoom.Free || CanChangeRoomSettings()) {
@@ -1230,41 +1659,42 @@ namespace OpenSMO
             CurrentRoom.CurrentSong.Artist == pickArtist &&
             CurrentRoom.CurrentSong.SubTitle == pickAlbum) {
 
-          if (canStart) {
-            foreach (User user in pickUsers) {
-              Data.AddSong(true, this);
-              user.SendSong(true);
-              user.SendGameStatus();
-            }
-          } else
-            mainClass.SendChatAll(cantStartReason, CurrentRoom);
-        } else {
-          if (canStart) {
-            Song newSong = new Song();
-
-            newSong.Name = pickName;
-            newSong.Artist = pickArtist;
-            newSong.SubTitle = pickAlbum;
-
-            CurrentRoom.CurrentSong = newSong;
-
-            int pickSongPlayed = 0;
-	    int newSongID = 0;
-            Hashtable pickSongRow = Data.AddSong(false, this);
-            if (pickSongRow != null) {
+            if (canStart) {
+              foreach (User user in pickUsers) {
+                Data.AddSong(true, this);
+                user.SendSong(true);
+                user.SendGameStatus();
+              }
+            } else
+              mainClass.SendChatAll(cantStartReason, CurrentRoom);
+          } else {
+            if (canStart) {
+              Song newSong = new Song();
+  
+              newSong.Name = pickName;
+              newSong.Artist = pickArtist;
+              newSong.SubTitle = pickAlbum;
+  
+              CurrentRoom.CurrentSong = newSong;
+  	      string htime = "";
+              int pickSongPlayed = 0;
+	      int newSongID = 0;
+              Hashtable pickSongRow = Data.AddSong(false, this);
+              if (pickSongRow != null) {
 	      newSongID = (int)pickSongRow["ID"];
               pickSongPlayed = (int)pickSongRow["Played"];
               newSong.Time = (int)pickSongRow["Time"];
-            }
+	      htime = Human(newSong.Time);
+              }
 
-            if (pickSongPlayed != 0 )
-	    {
-            Hashtable pickSongPlayedRow = Data.SongPlayed(newSongID);
-	    if ( (int)pickSongPlayedRow["Played"] < 1 )
+              if (pickSongPlayed != 0 )
+	      {
+              Hashtable pickSongPlayedRow = Data.SongPlayed(newSongID);
+	      if ( (int)pickSongPlayedRow["Played"] < 1 )
 		{
 	    		pickSongPlayed = (int)pickSongPlayedRow["Played"];
 		}
-	    }
+	      }
 //	    int asciilength = pickName.Length;
 
 //	    int utf8length = Utf8Decode(pickName).Length;
@@ -1274,7 +1704,14 @@ namespace OpenSMO
 //	    {
 //			chatname = "\n" + chatname + "\n";
 //	    }
-            mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + pickName + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.")), CurrentRoom);
+	    if (newSong.Time != 0)
+	    {
+		mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + pickName + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times " : "never been played.") + " and is " + htime + " long." ), CurrentRoom);
+	    }
+	    else
+	    {
+            	mainClass.SendChatAll(NameFormat() + " selected " + Func.ChatColor("00aa00") + pickName + Func.ChatColor("ffffff") + Func.ChatColor("ffffff") + ", which has " + (pickSongPlayed == 0 ? "never been played." : (pickSongPlayed > 1 ? "been played " + pickSongPlayed.ToString() + " times." : "never been played.") ), CurrentRoom);
+	    }
 	    newjoin = false;
               foreach (User user in pickUsers) {
                 user.SendSong(false);
@@ -1364,6 +1801,43 @@ namespace OpenSMO
           ez.SendPack();
 
           SendChatMessage(mainClass.ServerConfig.Get("Server_MOTD"));
+	  SendChatMessage("If you have not yet already Please create a room and run /scan");
+
+	Hashtable[] checkforfriends = MySql.Query("select * from friends where friend = " + User_ID.ToString() + "");
+	User[] allusers = GetUsersInServer();
+	if (checkforfriends.Count() != 0 )
+	{
+		for (int i = 0; i < checkforfriends.Count(); i++)
+		{
+			foreach (User user in allusers)
+			{
+				if (user.User_ID == (int)checkforfriends[i]["user"])
+				{
+					string time = DateTime.Now.ToString("HH:mm:ss");
+					user.SendChatMessage(Func.ChatColor("ffff00") + "Your friend: " + Func.ChatColor("ffffff") + "'" +NameFormat() + "'" + Func.ChatColor("ffff00") + " has connected to the server at " + time + "." + Func.ChatColor("ffffff"));
+				}
+			}
+		}
+	}
+
+        Hashtable[] checkforusers = MySql.Query("select * from friends where user = " + User_ID.ToString() + "");
+        User[] allusersfriends = GetUsersInServer();
+	if (checkforusers.Count() != 0 )
+	{
+	        for (int i = 0; i < checkforusers.Count(); i++)
+	        {
+	                foreach (User user in allusersfriends)
+	                {
+	                        if (user.User_ID == (int)checkforusers[i]["friend"])
+	                        {
+	                                SendChatMessage(Func.ChatColor("ffff00") + "Your friend: " + Func.ChatColor("ffffff") + "'" + user.NameFormat() + "'" + Func.ChatColor("ffff00") + " Is on the server." + Func.ChatColor("ffffff"));
+	                        }
+	                }
+		}	
+        }
+
+
+
           SendRoomList();
 
           User[] users = GetUsersInRoom();
@@ -1417,8 +1891,22 @@ namespace OpenSMO
         if (ez.LastPacketSize > 0)
           joinRoomPass = ez.ReadNT();
 
-        foreach (Room room in mainClass.Rooms) {
-          if (room.Name == joinRoomName && (room.Password == joinRoomPass || IsModerator())) {
+	int roombanned = 0;
+        foreach (Room room in mainClass.Rooms)
+	{
+		if (room.Name == joinRoomName)
+		{
+			foreach (int banned_id in room.banned)
+			{
+				if (banned_id == User_ID)
+				{
+					roombanned = 1;
+					SendChatMessage("You have been banned from this room.");
+				}
+			}
+		}
+
+          if (room.Name == joinRoomName && (room.Password == joinRoomPass || IsModerator()) && roombanned == 0 ) {
             CurrentRoom = room;
             SendToRoom();
             break;

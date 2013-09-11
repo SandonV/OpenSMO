@@ -17,6 +17,7 @@ namespace OpenSMO
     public TcpListener tcpListenerRTS;
     public int FPS = 120;
     public string userlist = "";
+    public string lobbyusers = "";
     public List<User> Users = new List<User>();
     public List<Room> Rooms = new List<Room>();
 
@@ -94,6 +95,7 @@ namespace OpenSMO
       MySql.User = ServerConfig.Get("MySql_User");
       MySql.Password = ServerConfig.Get("MySql_Password");
       MySql.Database = ServerConfig.Get("MySql_Database");
+      MySql.Timeout = ServerConfig.Get("MySql_Timeout");
 
       ReloadScripts();
 
@@ -206,6 +208,39 @@ namespace OpenSMO
 	//return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
     }
 
+                    public User[] GetUsersInLobby()
+                    {
+                      List<User> ret = new List<User>();
+                                List<User> users  = Users;
+                              foreach (User user in users) {
+                                if (user.CurrentRoom != null)
+                                {
+                                }
+                                else
+                                {
+                                  ret.Add(user);
+                                }
+                              }
+                      return ret.ToArray();
+                    }
+
+        public string GetLobbyUsers()
+        {
+			lobbyusers = "";
+                        List<User> users  = Users;
+                        foreach (User user in users)
+                        {
+                                if (user.CurrentRoom == null)
+                                {
+                                        string quoted = user.User_ID + ":" + user.User_Name + ",";
+                                        lobbyusers += quoted;
+                                }
+                        }
+                        return lobbyusers;
+        }
+
+
+
     public void RTSThread()
     {
       while (true) {
@@ -232,6 +267,28 @@ namespace OpenSMO
               switch (parse[0]) {
                 case "l":
                   responseBuffer = "[";
+
+
+
+		//Lobby
+
+                      responseBuffer += "[";
+                      responseBuffer += "\"Lobby\",";
+                      responseBuffer += "\"Lobby\",";
+                      responseBuffer += "\"\",";
+                      responseBuffer += "\"Admin\",";
+                      responseBuffer += GetUsersInLobby().Count().ToString() + ",";
+                      responseBuffer += "\"0\",";
+                      responseBuffer += "\"N/A\",";
+                      responseBuffer += "\"N/A\",";
+
+                      userlist = GetLobbyUsers();
+                      responseBuffer += "\"" + userlist.TrimEnd(',') + "\"";
+                      userlist = "";
+                      responseBuffer += "]";
+			responseBuffer += ",";
+
+
                   foreach (Room room in Rooms) {
                     if (!room.Secret && !room.Owner.ShadowBanned) {
 		      string playerlist;
@@ -385,10 +442,14 @@ namespace OpenSMO
 //      }
     }
 
+
     public void SendChatAll(string Message)
     {
-      foreach (User user in Users)
-        user.SendChatMessage(Message);
+      lock (Users)
+	{
+	      foreach (User user in Users)
+	        user.SendChatMessage(Message);
+	}
     }
 
     public void SendChatAll(string Message, Room room)

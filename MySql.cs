@@ -15,6 +15,7 @@ namespace OpenSMO
                 public static string User;
                 public static string Database;
                 public static string Password;
+		public static string Timeout;
 
 		public MySql()
 		{
@@ -25,7 +26,7 @@ namespace OpenSMO
 		{
 			string connectionString;
 			connectionString = "server=" + Host + ";" + "database=" + 
-				Database + ";" + "userid=" + User + ";" + "password=" + Password + ";charset=utf8;";
+				Database + ";" + "userid=" + User + ";" + "password=" + Password + ";charset=utf8;" + "default command timeout=" + Timeout + ";";
 			
 			conn = new MySqlConnection(connectionString);
 		}

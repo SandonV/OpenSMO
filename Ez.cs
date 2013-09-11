@@ -237,7 +237,9 @@ namespace OpenSMO
     public byte Read1()
     {
       LastPacketSize--;
-      return user.tcpReader.ReadByte();
+	try {
+	      return user.tcpReader.ReadByte();
+	} catch { MainClass.AddLog("Reading while socket closed!", true); return 0; }
     }
 
     public short Read2()

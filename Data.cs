@@ -32,12 +32,12 @@ namespace OpenSMO {
 		}
 		else
 		{
-			string owner = user.CurrentRoom.Owner.User_Name;
-			string name = user.CurrentRoom.Name;
-			string desc = user.CurrentRoom.Description;
-			MySql.Query("INSERT INTO rooms (Name,Description,Owner) VALUES(\"" + name + "\",\"" + desc + "\",\"" + owner + "\")");
+			string owner = MySql.AddSlashes(user.CurrentRoom.Owner.User_Name);
+			string name = MySql.AddSlashes(user.CurrentRoom.Name);
+			string desc = MySql.AddSlashes(user.CurrentRoom.Description);
+			MySql.Query("INSERT INTO rooms (Name,Description,Owner) VALUES('" + name + "','" + desc + "','" + owner + "')");
 			MainClass.AddLog("Owner: " + owner + " Name: " + name + "Description: " + desc);
-	                Hashtable[] getroomid = MySql.Query("SELECT ID from rooms where Name = \"" + name + "\" and Description = \"" + desc + "\" and Owner = \"" + owner + "\" ORDER BY created DESC LIMIT 1");
+	                Hashtable[] getroomid = MySql.Query("SELECT ID from rooms where Name = '" + name + "' and Description = '" + desc + "' and Owner = '" + owner + "' ORDER BY created DESC LIMIT 1");
 	                Hashtable roomidhash = getroomid[0];
 	                int roomid = (int)roomidhash["ID"];
 			return roomid;
@@ -75,7 +75,7 @@ namespace OpenSMO {
                                                           "'" + Artist + "'," +
                                                           "'" + SubTitle + "')");
 
-                return MySql.Query("SELECT * FROM songs ORDER BY \"ID\" DESC LIMIT 0,1")[0];
+                return MySql.Query("SELECT * FROM songs ORDER BY 'ID' DESC LIMIT 0,1")[0];
             } else if (Start) {
                 MySql.Query("UPDATE songs SET Played=Played+1 WHERE ID=" + song["ID"].ToString());
                 user.CurrentRoom.Reported = true;

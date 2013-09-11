@@ -13,6 +13,7 @@ namespace OpenSMO {
         public string Description;
         public string Password;
         public string Style = "dance";
+	public List<int> banned = new List<int>();
         public RoomStatus Status = RoomStatus.Closed;
         public bool Free;
         public bool AllPlaying = false;
@@ -20,20 +21,22 @@ namespace OpenSMO {
         public int SendStatsTimer = 0;
         public Hashtable Meta = new Hashtable();
 	public string myusers = "";
+	public string lobbyusers = "";
 	public int roomid = 0;
 
         public User Owner;
         public List<User> Users {
             get {
                 List<User> ret = new List<User>();
-                foreach (User user in mainClass.Users) {
-		    if (user != null)
-		    {
-               		if (user.CurrentRoom == this)
-                        	ret.Add(user);
-		    }
-                }
-                return ret;
+			List<User> users  = new List<User>(mainClass.Users);
+	                foreach (User user in users) {
+			    if (user != null)
+			    {
+	               		if (user.CurrentRoom == this)
+	                        	ret.Add(user);
+			    }
+	                }
+	                return ret;
             }
         }
         public int UserCount { get { return Users.Count; } }
@@ -61,15 +64,16 @@ namespace OpenSMO {
         public string GetRoomUsers()
         {
 		myusers ="";
-                foreach (User user in mainClass.Users)
-                {
-                        if (user.CurrentRoom == this)
-                        {
-                                string quoted = user.User_ID + ":" + user.User_Name + ",";
-                                myusers += quoted;
-                        }
-                }
-                return myusers;
+			List<User> users  = new List<User>(mainClass.Users);
+	                foreach (User user in users)
+	                {
+	                        if (user.CurrentRoom == this)
+	                        {
+	                                string quoted = user.User_ID + ":" + user.User_Name + ",";
+	                                myusers += quoted;
+	                        }
+	                }
+	                return myusers;
         }
 
 
@@ -85,11 +89,14 @@ namespace OpenSMO {
 
         public void Update() {
             if (++SendStatsTimer == mainClass.FPS / 10) {
-                foreach (User user in Users) {
-                    if (user.Playing)
-                        user.SendGameStatus();
-                }
-                SendStatsTimer = 0;
+                lock (Users)
+                {
+	                foreach (User user in Users) {
+	                    if (user.Playing)
+	                        user.SendGameStatus();
+	                }
+	                SendStatsTimer = 0;
+		}
             }
 
             if (UserCount == 0) {
