@@ -89,12 +89,9 @@ namespace OpenSMO {
 
         public void Update() {
             if (++SendStatsTimer == mainClass.FPS / 10) {
-                lock (Users)
-                {
 	                foreach (User user in Users) {
 	                    if (user.Playing)
 	                        user.SendGameStatus();
-	                }
 	                SendStatsTimer = 0;
 		}
             }

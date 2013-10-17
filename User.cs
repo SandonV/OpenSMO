@@ -146,13 +146,17 @@ namespace OpenSMO
     public UserRank User_Rank = UserRank.User;
     public Hashtable User_Table = null;
     public Hashtable Rank_Table = null;
-
+    public List<int> ignored = new List<int>();
+    public string joinpass = "";
+    public int nihongo = 0;
     public int User_Protocol = 0;
     public string User_Game = "";
     public int connectioncount = 0;
     private Room _CurrentRoom = null;
     private SongScanner mSongScanner = null;
     public Stopwatch SelectTime = new Stopwatch();
+    public Stopwatch disconnectedsince = new Stopwatch();
+
     public Room CurrentRoom
     {
       get { return _CurrentRoom; }
@@ -226,7 +230,6 @@ namespace OpenSMO
     public BinaryReader tcpReader;
 
     public Ez ez;
-
 
     public bool CanPlay = true;
     public bool Scanning = false;
@@ -509,6 +512,47 @@ namespace OpenSMO
 		Scanning = false;
         }
 
+	public void IgnoreUser(string Username)
+	{
+		if (Username.Length > 2 )
+		{
+			int suceeded = 0;
+			ci = new CultureInfo("en-US");
+			List<User> users  = new List<User>(mainClass.Users);
+			foreach (User user in users)
+			{
+				if (user.User_Name.StartsWith(Username, true, ci))
+				{
+					List<int> copy  = new List<int>(ignored);
+					foreach (int ignored_id in copy)
+					{
+						if (ignored_id == user.User_ID)
+						{
+							suceeded=2 ;
+							SendChatMessage("Removing Ignore for: " + user.NameFormat() + ".");
+							ignored.Remove(user.User_ID);
+						}
+					}
+
+					if ( suceeded != 2)
+					{
+						suceeded = 1;
+						SendChatMessage("Ignoring User " + user.NameFormat() + ".");
+						ignored.Add(user.User_ID);
+					}
+				}				
+			}
+			if (suceeded == 0 )
+			{
+				SendChatMessage("User: " + Func.ChatColor("ff0000") + Username + " " + Func.ChatColor("ffffff") + "not found on the server. Ignore failed.");
+			}
+		}
+		else
+		{
+			SendChatMessage(Func.ChatColor("ff0000") + "You must give me a username that is 3 characters or longer" + Func.ChatColor("ffffff"));
+		}
+		
+	}
 	    public void SendChatPM(string Username, string Message)
 	    {
 
@@ -521,10 +565,22 @@ namespace OpenSMO
 				{
 			                if (user.User_Name.StartsWith(Username, true, ci))
 					{
-						suceeded = 1;
-			                	user.SendChatMessage(Message);
-						MainClass.AddLog("PM From " + User_Name + " To: " + user.User_Name + " Me: " + Message);
-						SendChatMessage("Sent PM to: " +  user.NameFormat() + "." );
+						List<int> copy  = new List<int>(user.ignored);
+						foreach (int ignored_id in copy)
+						{
+							if (ignored_id == User_ID)
+							{
+								suceeded = 2;
+								SendChatMessage("User: " + Func.ChatColor("ff0000") + Username + " " + Func.ChatColor("ffffff") + "Has Ignored you. PM Failed.");
+							}
+						}
+						if (suceeded != 2)
+						{
+							suceeded = 1;
+				                	user.SendChatMessage(Message);
+							MainClass.AddLog("PM From " + User_Name + " To: " + user.User_Name + " Me: " + Message);
+							SendChatMessage("Sent PM to: " +  user.NameFormat() + "." );
+						}
 					}
 				}
 				if (suceeded == 0 )
@@ -678,11 +734,6 @@ namespace OpenSMO
         this.CurrentRoom.Users.Remove(this);
       this.tcpClient.Close();
       this.Connected = false;
-        User[] serverusers = GetUsersInLobby();
-        foreach (User user in serverusers)
-	{
-		user.SendRoomPlayers();
-	}
 
         if ( (this.User_Name != "") && (this.User_Name != null) )
         {
@@ -703,6 +754,22 @@ namespace OpenSMO
                         }
                 }
         }
+	disconnectedsince.Restart();
+	while ( disconnectedsince.ElapsedMilliseconds > 2000)
+	{
+	         List<User> serverusers  = new List<User>(mainClass.Users);
+		foreach (User user in serverusers)
+		{
+			if (user.CurrentRoom == null)
+			{
+				user.SendRoomList();
+				user.SendRoomPlayers();
+			}
+		}
+
+		break;
+	}
+
 
     }
 
@@ -797,8 +864,19 @@ namespace OpenSMO
 	        foreach (User user in users){
 		user.SendSong(false);
 		}
-      } else
-        MainClass.AddLog("Not supported: Kicking from room. Fixme! User::SendToRoom", true);
+      }
+	else
+	{
+        ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
+        ez.Write1(1);
+        ez.Write1(0);
+        ez.WriteNT("");
+        ez.WriteNT("");
+        ez.Write1((byte)NSScreen.Lobby); // If this is 0, it won't change the players' screen
+        ez.SendPack();
+
+        //MainClass.AddLog("Not supported: Kicking from room. Fixme! User::SendToRoom", true);
+	}
     }
 
     public User[] GetUsersInRoom()
@@ -1141,20 +1219,23 @@ namespace OpenSMO
 
       CurrentRoom.AllPlaying = true;
       User[] checkSyncPlayers = GetUsersInRoom();
-      foreach (User user in checkSyncPlayers) {
-        if (user.SyncNeeded && user.CanPlay && !user.Synced)
-          CurrentRoom.AllPlaying = false;
-      }
+	foreach (User user in checkSyncPlayers)
+	{
+        	if (user.SyncNeeded && user.CanPlay && !user.Synced)
+         	 CurrentRoom.AllPlaying = false;
+	}
 
-      if (!Synced || CurrentRoom.AllPlaying) {
-        ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
-        ez.SendPack();
+	if (!Synced || CurrentRoom.AllPlaying)
+	{
+        	ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
+        	ez.SendPack();
 
-        if (CurrentRoom.AllPlaying) {
-          SendSongStartTo(checkSyncPlayers);
-          CurrentRoom.AllPlaying = false;
-        }
-      }
+	        if (CurrentRoom.AllPlaying)
+		{
+			SendSongStartTo(checkSyncPlayers);
+			CurrentRoom.AllPlaying = false;
+		}
+	}
     }
 
     public static int GetServCombo(int NoteHit, int servcombo)
@@ -1732,9 +1813,40 @@ namespace OpenSMO
     }
 
     byte packetCommandSub = 0;
+
     public void NSCSMOnline()
     {
       packetCommandSub = ez.Read1();
+
+	//Client requested more info on room
+	if (packetCommandSub == 3)
+	{
+		string joinRoomName = ez.ReadNT();
+		ez.Discard();
+		foreach (Room room in mainClass.Rooms)
+		{
+			if (room.Name == joinRoomName)
+			{
+				MainClass.AddLog("Found room name : " + room.Name);
+				MainClass.AddLog(Utf8Decode(room.CurrentSong.Name) + ", " + Utf8Decode(room.CurrentSong.SubTitle) + ", " + Utf8Decode(room.CurrentSong.Artist));
+				ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
+				ez.Write1((byte)3);
+				ez.WriteNT(Utf8Decode(room.CurrentSong.Name));
+				ez.WriteNT(Utf8Decode(room.CurrentSong.SubTitle));
+				ez.WriteNT(Utf8Decode(room.CurrentSong.Artist));
+				ez.Write1((byte)room.Users.Count());
+				ez.Write1((byte)32);
+				foreach (User user in room.Users)
+				{
+					ez.WriteNT(user.User_Name);
+				}
+				return;
+				
+			}
+		}
+
+	}
+
       byte packetCommandSubSub = ez.Read1();
 
       if (packetCommandSub == 0) { // Login
@@ -1767,7 +1879,7 @@ namespace OpenSMO
 	  Rank_Table =  checkstasrank[0];
 	  User_Level_Rank = (int)Rank_Table["levelrank"] + 1;
 
-		MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + smoUsername + "','" + smoPassword + "','" + User_IP + "','suceeded','" + User_Game + "')");
+		MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + MySql.AddSlashes(smoUsername) + "','" + smoPassword + "','" + User_IP + "','suceeded','" + User_Game + "')");
 
           User[] checkifconnected = GetUsersInServer();
           foreach (User user in  checkifconnected) {
@@ -1801,6 +1913,9 @@ namespace OpenSMO
           ez.SendPack();
 
           SendChatMessage(mainClass.ServerConfig.Get("Server_MOTD"));
+	  string builddate = mainClass.RetrieveLinkerTimestamp().ToString("MM/dd/yy HH:mm:ss");
+	  SendChatMessage("Server was last updated on: "+ builddate);
+
 	  SendChatMessage("If you have not yet already Please create a room and run /scan");
 
 	Hashtable[] checkforfriends = MySql.Query("select * from friends where friend = " + User_ID.ToString() + "");
@@ -1855,6 +1970,8 @@ namespace OpenSMO
             User_Name = (string)User_Table["Username"];
             User_Rank = (UserRank)User_Table["Rank"];
 
+	    MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + User_Name + "','" + smoPassword + "','" + User_IP + "','suceeded','" + User_Game + "')");
+
             ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
             ez.Write2(0);
             ez.WriteNT("Login success!");
@@ -1896,7 +2013,8 @@ namespace OpenSMO
 	{
 		if (room.Name == joinRoomName)
 		{
-			foreach (int banned_id in room.banned)
+			List<int> banned  = new List<int>(room.banned);
+			foreach (int banned_id in banned)
 			{
 				if (banned_id == User_ID)
 				{
@@ -1906,7 +2024,7 @@ namespace OpenSMO
 			}
 		}
 
-          if (room.Name == joinRoomName && (room.Password == joinRoomPass || IsModerator()) && roombanned == 0 ) {
+          if (room.Name == joinRoomName && (room.Password == joinRoomPass || IsModerator() || room.Password == joinpass) && roombanned == 0 ) {
             CurrentRoom = room;
             SendToRoom();
             break;
@@ -1990,7 +2108,18 @@ namespace OpenSMO
           for (int i = 0; i < mainClass.Scripting.ChatHooks.Count; i++)
             cmHandled = mainClass.Scripting.ChatHooks[i](this, cmMessage);
           if (!cmHandled)
-            mainClass.SendChatAll(NameFormat() + ": " + cmMessage, CurrentRoom);
+		if ( nihongo == 1)
+		{
+			string sentcommand = "k";
+			for (int i = 0; i < mainClass.Scripting.ChatCommandHooks[sentcommand].Count; i++)
+			{
+				mainClass.Scripting.ChatCommandHooks[sentcommand][i](this, cmMessage);
+			}
+		}
+		else
+		{
+	            mainClass.SendChatAll(NameFormat() + ": " + cmMessage, CurrentRoom);
+		}
         }
       } catch (Exception ex) { mainClass.Scripting.HandleError(ex); }
     }
