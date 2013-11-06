@@ -386,6 +386,7 @@ public class User
 	public string GamePlayerSettings = "";
 	public string CourseTitle = "";
 	public string SongOptions = "";
+	public int PlayerRate = 100;
 	public Hashtable Meta = new Hashtable();
 
 	public Stopwatch PlayTime = new Stopwatch();
@@ -543,7 +544,7 @@ public class User
 		{
 			int suceeded = 0;
 			ci = new CultureInfo("en-US");
-			List<User> users  = new List<User>(mainClass.Users);
+			List<User> users  = GetAllUsers();
 			foreach (User user in users)
 			{
 				if (user.User_Name.StartsWith(Username, true, ci))
@@ -585,7 +586,7 @@ public class User
 		{
 			int suceeded = 0;
 			ci = new CultureInfo("en-US");
-			List<User> users  = new List<User>(mainClass.Users);
+			List<User> users  = GetAllUsers();
 			foreach (User user in users)
 			{
 				if (user.User_Name.StartsWith(Username, true, ci))
@@ -780,23 +781,6 @@ public class User
 				}
 			}
 		}
-		disconnectedsince.Restart();
-		while ( disconnectedsince.ElapsedMilliseconds > 2000)
-		{
-			List<User> serverusers  = new List<User>(mainClass.Users);
-			foreach (User user in serverusers)
-			{
-				if (user.CurrentRoom == null)
-				{
-					user.SendRoomList();
-					user.SendRoomPlayers();
-				}
-			}
-
-			break;
-		}
-
-
 	}
 
 	public string NameFormat()
@@ -886,7 +870,7 @@ public class User
 		{
 			SendRoomList();
 
-			List<User> userlist  = new List<User>(mainClass.Users);
+			List<User> userlist = GetAllUsers();
 			foreach (User user in userlist)
 				user.SendRoomPlayers();
 
@@ -900,12 +884,6 @@ public class User
 
 			mainClass.SendChatAll(NameFormat() + Func.ChatColor("ffffff") + " joined the room.", CurrentRoom);
 			newjoin = true;
-			//MainClass.AddLog("Room Song: '"+CurrentRoom.CurrentSong.Name+"','"+CurrentRoom.CurrentSong.SubTitle+"','"+CurrentRoom.CurrentSong.Artist+"'");
-			User[] users = GetUsersInRoom();
-			foreach (User user in users)
-			{
-				user.SendSong(false);
-			}
 		}
 		else
 		{
@@ -924,7 +902,7 @@ public class User
 	public User[] GetUsersInRoom()
 	{
 		List<User> ret = new List<User>();
-		List<User> users  = new List<User>(mainClass.Users);
+		List<User> users = GetAllUsers();
 		foreach (User user in users)
 		{
 			if (user.CurrentRoom == this.CurrentRoom)
@@ -936,7 +914,7 @@ public class User
 	public User[] GetUsersInLobby()
 	{
 		List<User> ret = new List<User>();
-		List<User> users  = new List<User>(mainClass.Users);
+		List<User> users = GetAllUsers();
 		foreach (User user in users)
 		{
 			if (user.CurrentRoom != null)
@@ -962,7 +940,7 @@ public class User
 	public User[] GetUsersInServer()
 	{
 		List<User> ret = new List<User>();
-		List<User> users  = new List<User>(mainClass.Users);
+		List<User> users = GetAllUsers();
 		foreach (User user in users)
 		{
 			ret.Add(user);
@@ -970,6 +948,14 @@ public class User
 		return ret.ToArray();
 	}
 
+	public List<User> GetAllUsers()
+	{
+		lock(mainClass.Users)
+		{
+			List<User> users  = new List<User>(mainClass.Users);
+			return users;
+		}
+	}
 
 	public void SendRoomPlayers()
 	{
@@ -1059,12 +1045,27 @@ public class User
 			Grade = NSGrades.AAAA;
 		}
 
-		ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCRSG));
-		ez.Write1(Start ? (byte)2 : (byte)1);
-		ez.WriteNT(CurrentRoom.CurrentSong.Name);
-		ez.WriteNT(CurrentRoom.CurrentSong.Artist);
-		ez.WriteNT(CurrentRoom.CurrentSong.SubTitle);
-		ez.SendPack();
+		MainClass.AddLog("CurrentRoom.CurrentSong.Name: '" + CurrentRoom.CurrentSong.Name + "' CurrentRoom.CurrentSong.SubTitle: '"+ CurrentRoom.CurrentSong.SubTitle + "' CurrentRoom.CurrentSong.Artist: '" +CurrentRoom.CurrentSong.Artist); 
+
+		if ( CurrentRoom != null)
+		{
+			if (CurrentRoom.CurrentSong !=  null )
+			{
+				if ( ((CurrentRoom.CurrentSong.Name == "") && (CurrentRoom.CurrentSong.SubTitle == "") && (CurrentRoom.CurrentSong.Artist == "")) )
+				{
+					//Do Nothing
+				}
+				else
+				{
+					ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCRSG));
+					ez.Write1(Start ? (byte)2 : (byte)1);
+					ez.WriteNT(CurrentRoom.CurrentSong.Name);
+					ez.WriteNT(CurrentRoom.CurrentSong.Artist);
+					ez.WriteNT(CurrentRoom.CurrentSong.SubTitle);
+					ez.SendPack();
+				}
+			}
+		}
 	}
 
 
@@ -1161,7 +1162,6 @@ public class User
 		{
 			user.Synced = false;
 			user.SongTime.Restart();
-
 			user.ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
 			user.ez.SendPack();
 		}
@@ -1198,17 +1198,32 @@ public class User
 		NSScreen oldScreen = CurrentScreen;
 		NSScreen newScreen = (NSScreen)ez.Read1();
 
+		User[] lobbyusers = GetUsersInRoom();
+		foreach(User lobbyuser in lobbyusers)
+		{
+			lobbyuser.SendRoomList();
+			lobbyuser.SendRoomPlayers();
+		}
 		if (newScreen == NSScreen.Lobby)
 		{
 			CurrentRoom = null;
 
 			CurrentRoomRights = RoomRights.Player;
 			CurrentScreen = newScreen;
-			SendRoomList();
-			SendRoomPlayers();
+			User[] roomusers = GetUsersInRoom();
+			foreach(User roomuser in roomusers)
+			{
+				roomuser.SendRoomList();
+				roomuser.SendRoomPlayers();
+			}
 		}
 		else
 		{
+		
+			if (newScreen == NSScreen.Room)
+			{
+				SendSong(false);
+			}
 //	}else if (newScreen == NSScreen.Room) {
 //        // find people waiting for synchronization
 //        List<User> usersToSendPacketTo = new List<User>();
@@ -1262,7 +1277,23 @@ public class User
 
 		this.CourseTitle = ez.ReadNT();
 		this.SongOptions = ez.ReadNT();
-
+		string[] options = this.SongOptions.Split(',');
+		foreach (string option in options)
+		{
+			if (option.Contains("xMusic"))
+			{
+				string[] rate = option.Split('x');
+				this.PlayerRate = (int)Math.Round( (float.Parse(rate[0]) * 100.0) );
+				if (this.PlayerRate == 100)
+				{
+					this.PlayerRate = 0;
+				}
+			}
+			else
+			{
+				this.PlayerRate = 100;
+			}
+		}
 		string newPlayerSettings = "";
 		do
 		{
@@ -1276,6 +1307,11 @@ public class User
 			GamePlayerSettings = GamePlayerSettings.Substring(0, GamePlayerSettings.LastIndexOf(" ")<0?0:GamePlayerSettings.LastIndexOf(" "));
 		}
 
+		//Remove non unique Entries:
+
+		string[] settings = GamePlayerSettings.Replace(",", "").Split(' ');
+		string[] uniquesettings = settings.Distinct().ToArray();
+		GamePlayerSettings = string.Join(", ", uniquesettings);
 		CurrentRoom.AllPlaying = true;
 		User[] checkSyncPlayers = GetUsersInRoom();
 		foreach (User user in checkSyncPlayers)
@@ -1284,17 +1320,18 @@ public class User
 				CurrentRoom.AllPlaying = false;
 		}
 
-		if (!Synced || CurrentRoom.AllPlaying)
-		{
-			ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
-			ez.SendPack();
+//		if (!Synced || CurrentRoom.AllPlaying)
+//		{
+//			MainClass.AddLog("SENT NSCGSR");
+//			ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
+//			ez.SendPack();
 
-			if (CurrentRoom.AllPlaying)
-			{
-				SendSongStartTo(checkSyncPlayers);
-				CurrentRoom.AllPlaying = false;
-			}
-		}
+//			if (!Synced || CurrentRoom.AllPlaying)
+//			{
+		SendSongStartTo(checkSyncPlayers);
+		CurrentRoom.AllPlaying = false;
+//			}
+//		}
 	}
 
 	public static int GetServCombo(int NoteHit, int servcombo)
@@ -1725,8 +1762,7 @@ public class User
 		string pickAlbum = ez.ReadNT();
 
 		int timewaited;
-
-		if ( SelectTime.ElapsedMilliseconds < 751 )
+		if ( (SelectTime.ElapsedMilliseconds < 751) && (SelectTime.ElapsedMilliseconds != 0) )
 		{
 			timewaited = 0;
 		}
@@ -1921,13 +1957,13 @@ public class User
 			{
 				if (room.Name == joinRoomName)
 				{
-					MainClass.AddLog("Found room name : " + room.Name);
+					//MainClass.AddLog("Found room name : " + room.Name);
 					MainClass.AddLog(Utf8Decode(room.CurrentSong.Name) + ", " + Utf8Decode(room.CurrentSong.SubTitle) + ", " + Utf8Decode(room.CurrentSong.Artist));
 					ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
 					ez.Write1((byte)3);
-					ez.WriteNT(Utf8Decode(room.CurrentSong.Name));
-					ez.WriteNT(Utf8Decode(room.CurrentSong.SubTitle));
-					ez.WriteNT(Utf8Decode(room.CurrentSong.Artist));
+					ez.WriteNT(room.CurrentSong.Name);
+					ez.WriteNT(room.CurrentSong.SubTitle);
+					ez.WriteNT(room.CurrentSong.Artist);
 					ez.Write1((byte)room.Users.Count());
 					ez.Write1((byte)32);
 					foreach (User user in room.Users)
@@ -2246,7 +2282,10 @@ public class User
 	{
 		MainClass.AddLog("Couldn't read data from " + this.User_Name + ", user disconnecting");
 		if (CurrentRoom != null) CurrentRoom = null;
-		mainClass.Users.Remove(this);
+		lock(mainClass.Users)
+		{
+			mainClass.Users.Remove(this);
+		}
 		this.tcpClient.Close();
 	}
 
@@ -2270,7 +2309,10 @@ public class User
 				{
 					MainClass.AddLog("Ping timeout for " + this.User_Name + ", user disconnecting");
 					if (CurrentRoom != null) CurrentRoom = null;
-					mainClass.Users.Remove(this);
+					lock(mainClass.Users)
+					{
+						mainClass.Users.Remove(this);
+					}
 					this.tcpClient.Close();
 					return;
 				}
@@ -2290,7 +2332,20 @@ public class User
 		{
 			MainClass.AddLog("Socket closed.");
 			if (CurrentRoom != null) CurrentRoom = null;
-			mainClass.Users.Remove(this);
+			lock(mainClass.Users)
+			{
+				mainClass.Users.Remove(this);
+			}
+
+
+			List<User> userlist = GetAllUsers();
+			foreach (User user in userlist)
+			{
+				if (user.CurrentRoom == null)
+				{
+					user.SendRoomPlayers();
+				}
+			}
 			return;
 		}
 

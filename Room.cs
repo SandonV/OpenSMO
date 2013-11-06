@@ -32,16 +32,19 @@ public class Room
 		get
 		{
 			List<User> ret = new List<User>();
-			List<User> users  = new List<User>(mainClass.Users);
-			foreach (User user in users)
+			lock(mainClass.Users)
 			{
-				if (user != null)
+				List<User> users  = new List<User>(mainClass.Users);
+				foreach (User user in users)
 				{
-					if (user.CurrentRoom == this)
-						ret.Add(user);
+					if (user != null)
+					{
+						if (user.CurrentRoom == this)
+							ret.Add(user);
+					}
 				}
+				return ret;
 			}
-			return ret;
 		}
 	}
 	public int UserCount

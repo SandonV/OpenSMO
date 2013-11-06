@@ -164,7 +164,10 @@ public class MainClass
 
 					User newUser = new User(this, newTcpClient);
 					newUser.ShadowBanned = true;
-					Users.Add(newUser);
+					lock(Users)
+					{
+						Users.Add(newUser);
+					}
 				}
 				else
 				{
@@ -177,7 +180,18 @@ public class MainClass
 				AddLog("Client connected: " + IP);
 
 				User newUser = new User(this, newTcpClient);
-				Users.Add(newUser);
+				lock(Users)
+				{
+					Users.Add(newUser);
+				}
+				List<User> userlist  = GetAllUsers();
+				foreach (User user in userlist)
+				{
+					if (user.CurrentRoom == null)
+					{
+						user.SendRoomPlayers();
+					}
+				}
 			}
 		}
 	}
@@ -260,7 +274,7 @@ public class MainClass
 	public User[] GetUsersInLobby()
 	{
 		List<User> ret = new List<User>();
-		List<User> users  = Users;
+		List<User> users = GetAllUsers();
 		foreach (User user in users)
 		{
 			if (user.CurrentRoom != null)
@@ -277,7 +291,7 @@ public class MainClass
 	public string GetLobbyUsers()
 	{
 		lobbyusers = "";
-		List<User> users  = Users;
+		List<User> users  = GetAllUsers();
 		foreach (User user in users)
 		{
 			if (user.CurrentRoom == null)
@@ -289,7 +303,14 @@ public class MainClass
 		return lobbyusers;
 	}
 
-
+        public List<User> GetAllUsers()
+        {
+		lock(Users)
+		{
+			List<User> users  = new List<User>(Users);
+			return users;
+		}
+	}
 
 	public void RTSThread()
 	{
@@ -515,11 +536,9 @@ public class MainClass
 
 	public void SendChatAll(string Message)
 	{
-		lock (Users)
-		{
-			foreach (User user in Users)
-				user.SendChatMessage(Message);
-		}
+		List<User> userlist  = GetAllUsers();
+		foreach (User user in userlist)
+			user.SendChatMessage(Message);
 	}
 
 	public void SendChatAll(string Message, Room room)

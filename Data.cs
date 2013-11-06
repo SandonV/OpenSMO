@@ -141,9 +141,12 @@ public static class Data
 				double songTime = user.SongTime.Elapsed.TotalSeconds;
 				if (songTime != 0)
 				{
+					if ( (user.SongOptions.Contains("Fail")) && (user.User_Protocol == 2) )
+					{
 //                        if (songTime > (int)newsong["Time"])
 //		        {
-					MySql.Query("UPDATE songs SET Time=" + songTime.ToString().Replace(',', '.') + " WHERE ID=" + newsong["ID"]);
+						MySql.Query("UPDATE songs SET Time=" + songTime.ToString().Replace(',', '.') + " WHERE ID=" + newsong["ID"]);
+					}
 //			}
 				}
 			}
@@ -266,9 +269,9 @@ public static class Data
 				if (!user.ShadowBanned)
 				{
 					MySql.Query("INSERT INTO stats (User,PlayerSettings,Song,Room,Feet,Difficulty,Grade,Score,MaxCombo," +
-								"Note_0,Note_1,Note_Mine,Note_Miss,Note_Barely,Note_Good,Note_Great,Note_Perfect,Note_Flawless,Note_NG,Note_Held,Toasty,timing) VALUES(" +
+								"Note_0,Note_1,Note_Mine,Note_Miss,Note_Barely,Note_Good,Note_Great,Note_Perfect,Note_Flawless,Note_NG,Note_Held,Toasty,timing, rate) VALUES(" +
 								user.User_Table["ID"].ToString() + ",'" + playerSettings + "'," + songID.ToString() + "," + user.CurrentRoom.roomid.ToString() + "," + user.GameFeet.ToString() + "," + ((int)user.GameDifficulty).ToString() + "," + ((int)user.Grade).ToString() + "," + user.Score.ToString() + "," + user.MaxCombo.ToString() + "," +
-								user.Notes[0].ToString() + "," + user.Notes[1].ToString() + "," + user.Notes[2].ToString() + "," + user.Notes[3].ToString() + "," + user.Notes[4].ToString() + "," + user.Notes[5].ToString() + "," + user.Notes[6].ToString() + "," + user.Notes[7].ToString() + "," + user.Notes[8].ToString() + "," + user.Notes[9].ToString() + "," + user.Notes[10].ToString() + "," + user.toasty + "," + user.timing + ")");
+								user.Notes[0].ToString() + "," + user.Notes[1].ToString() + "," + user.Notes[2].ToString() + "," + user.Notes[3].ToString() + "," + user.Notes[4].ToString() + "," + user.Notes[5].ToString() + "," + user.Notes[6].ToString() + "," + user.Notes[7].ToString() + "," + user.Notes[8].ToString() + "," + user.Notes[9].ToString() + "," + user.Notes[10].ToString() + "," + user.toasty + "," + user.timing + "," + user.PlayerRate + ")");
 				}
 			}
 
