@@ -184,12 +184,14 @@ public class MainClass
 				{
 					Users.Add(newUser);
 				}
-				List<User> userlist  = GetAllUsers();
-				foreach (User user in userlist)
+				lock(Users)
 				{
-					if (user.CurrentRoom == null)
+					foreach (User user in Users)
 					{
-						user.SendRoomPlayers();
+						if (user.CurrentRoom == null)
+						{
+							user.SendRoomPlayers();
+						}
 					}
 				}
 			}
@@ -227,20 +229,21 @@ public class MainClass
 			{
 				Scripting.HandleError(ex);
 			}
-
-			for (int i = 0; i < Users.Count; i++)
+			lock(Users)
 			{
-				if (Users[i] != null)
+				for (int i = 0; i < Users.Count; i++)
 				{
-					Users[i].Update();
+					if (Users[i] != null)
+					{
+						Users[i].Update();
+					}
 				}
-			}
-
-			for (int i = 0; i < Rooms.Count; i++)
-			{
-				if (Rooms[i] != null)
+				for (int i = 0; i < Rooms.Count; i++)
 				{
-					Rooms[i].Update();
+					if (Rooms[i] != null)
+					{
+						Rooms[i].Update();
+					}
 				}
 			}
 
@@ -320,8 +323,16 @@ public class MainClass
 
 			new Thread(new ThreadStart(delegate
 			{
+				string IP = "";
 				TcpClient newTcpClient = newClient;
-				string IP = newTcpClient.Client.RemoteEndPoint.ToString().Split(':')[0];
+				try
+				{
+					IP = newTcpClient.Client.RemoteEndPoint.ToString().Split(':')[0];
+				}
+				catch (SocketException e)
+				{
+					AddLog("RTS Exception: Disconnected: error code: " + e.NativeErrorCode.ToString());
+				}
 
 				NetworkStream stream = newTcpClient.GetStream();
 				stream.ReadTimeout = 500;
@@ -337,15 +348,23 @@ public class MainClass
 					string line = reader.ReadLine();
 					if (line != null)
 					{
-						string request = line.Split(' ')[1].Substring(1);
+						string[] requestParts = line.Split(' ')[1].Substring(1).Split(new char[] { '?' }, 2);
+						string request = requestParts[0];
 						string[] parse = request.Split('/');
+
+						string roomID = "";
+						Room r = null;
+
 
 						string responseBuffer = "";
 						switch (parse[0])
 						{
+						case "uptime":
+							responseBuffer = ((int)((DateTime.Now - StartTime).TotalMilliseconds / 1000d)).ToString();
+							break;
+
 						case "l":
 							responseBuffer = "[";
-
 
 
 							//Lobby
@@ -410,8 +429,8 @@ public class MainClass
 
 
 						case "g":
-							string roomID = parse[1];
-							Room r = null;
+							roomID = parse[1];
+							r = null;
 							foreach (Room room in Rooms)
 							{
 								if (room.ID == roomID)
@@ -481,8 +500,58 @@ public class MainClass
 								}
 							}
 							break;
-						}
 
+						case "c":
+							if (IP != ServerConfig.Get("RTS_Trusted"))
+							{
+								responseBuffer = "[]";
+								break;
+							}
+
+							roomID = parse[1];
+							string webuserid = parse[2];
+							string chatcolor = parse[3];
+							string data = Uri.UnescapeDataString(parse[4]);
+							//string data = requestParts.Length == 3 ? Uri.UnescapeDataString(requestParts[3]);
+							Hashtable[] userRes = MySql.Query("select Username from users where id = " + webuserid + "");
+							if (userRes.Length != 1)
+							{
+								break;
+						 	}
+
+							Hashtable u = userRes[0];
+
+							r = null;
+							lock(Rooms)
+							{
+								foreach (Room room in Rooms)
+								{
+									if (room.ID == roomID)
+									{
+										r = room;
+										break;
+									}
+								}
+							
+							
+								AddLog("WebChat from " + u["Username"].ToString() + ": " + data);
+								if (r != null && !r.Secret) 
+								{
+									if (r.NoWebChat)
+									{
+										responseBuffer = "Web Chat Disabled on Room by Owner/OP";
+										break;
+									}
+									string strName = u["Username"].ToString();
+		
+									SendChatAll(Func.ChatColor(chatcolor) +strName + Func.ChatColor("ffffff") + ": " + User.Utf8Encode(data), r);
+									}
+							}
+		
+							responseBuffer = "OK";
+							break;
+								
+						}
 						writer.WriteLine("HTTP/1.1 200 OK");
 						writer.WriteLine("Content-Type: text/plain");
 						writer.WriteLine("access-control-allow-origin: *");
@@ -556,10 +625,13 @@ public class MainClass
 
 	public void SendChatAll(string Message, Room room, User exception)
 	{
-		foreach (User user in Users)
+		lock(Users)
 		{
-			if (user.CurrentRoom == room && user != exception)
-				user.SendChatMessage(Message);
+			foreach (User user in Users)
+			{
+				if (user.CurrentRoom == room && user != exception)
+					user.SendChatMessage(Message);
+			}
 		}
 	}
 

@@ -70,6 +70,7 @@ public class MySql
 
 	public static string AddSlashes(string str)
 	{
+		//return MySqlHelper.EscapeString(str);
 		return str.Replace("\\", "\\\\").Replace("'", "\\'");
 	} // end addslashes
 

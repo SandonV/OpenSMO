@@ -174,68 +174,70 @@ public class User
 			{
 				if (oldRoom == null) return;
 
-				User[] users = oldRoom.Users.ToArray();
-				if (users.Length == 0)
+				lock(mainClass.Users)
 				{
-					MainClass.AddLog("Removing room '" + oldRoom.Name + "'");
-					mainClass.Rooms.Remove(oldRoom);
-
-					foreach (User user in lobbyUsers)
-						user.SendRoomList();
-				}
-				else
-				{
-					if (oldRoom.AllPlaying)
-					{
-						bool shouldStart = true;
-						foreach (User user in users)
-						{
-							if (!user.Synced)
-							{
-								shouldStart = false;
-								break;
-							}
-						}
-
-						if (shouldStart)
-						{
-							SendSongStartTo(users);
-							oldRoom.AllPlaying = false;
-						}
-					}
-					mainClass.SendChatAll(NameFormat() + " left the room.", oldRoom, this);
-
-					foreach (User user in users)
-						user.SendRoomPlayers();
-
-					if (users.Length > 0)
-					{
-						if (CurrentRoomRights == RoomRights.Owner)
-						{
-							User newOwner;
-							int tmout = 0;
-							do
-							{
-								newOwner = users[MainClass.rnd.Next(users.Length)];
-								if (++tmout == 15) return;
-							}
-							while (newOwner == this);
-							newOwner.CurrentRoomRights = RoomRights.Owner;
-							newOwner.CurrentRoom.Owner = newOwner;
-							mainClass.SendChatAll(newOwner.NameFormat() + " is now room owner.", newOwner.CurrentRoom);
-						}
-					}
-					else
+					User[] users = oldRoom.Users.ToArray();
+					if (users.Length == 0)
 					{
 						MainClass.AddLog("Removing room '" + oldRoom.Name + "'");
 						mainClass.Rooms.Remove(oldRoom);
-						oldRoom = null;
+	
+						foreach (User user in lobbyUsers)
+							user.SendRoomList();
 					}
-					CurrentRoomRights = RoomRights.Player;
+					else
+					{
+						if (oldRoom.AllPlaying)
+						{
+							bool shouldStart = true;
+							foreach (User user in users)
+							{
+								if (!user.Synced)
+								{
+									shouldStart = false;
+									break;
+								}
+							}
+	
+							if (shouldStart)
+							{
+								SendSongStartTo(users);
+								oldRoom.AllPlaying = false;
+							}
+						}
+						mainClass.SendChatAll(NameFormat() + " left the room.", oldRoom, this);
+	
+						foreach (User user in users)
+							user.SendRoomPlayers();
+	
+						if (users.Length > 0)
+						{
+							if (CurrentRoomRights == RoomRights.Owner)
+							{
+								User newOwner;
+								int tmout = 0;
+								do
+								{
+									newOwner = users[MainClass.rnd.Next(users.Length)];
+									if (++tmout == 15) return;
+								}
+								while (newOwner == this);
+								newOwner.CurrentRoomRights = RoomRights.Owner;
+								newOwner.CurrentRoom.Owner = newOwner;
+								mainClass.SendChatAll(newOwner.NameFormat() + " is now room owner.", newOwner.CurrentRoom);
+							}
+						}
+						else
+						{
+							MainClass.AddLog("Removing room '" + oldRoom.Name + "'");
+							mainClass.Rooms.Remove(oldRoom);
+							oldRoom = null;
+						}
+						CurrentRoomRights = RoomRights.Player;
+					}
+					foreach (User user in lobbyUsers)
+						user.SendRoomPlayers();
 				}
-
-				foreach (User user in lobbyUsers)
-					user.SendRoomPlayers();
 			}
 		}
 	}
@@ -1045,13 +1047,11 @@ public class User
 			Grade = NSGrades.AAAA;
 		}
 
-		MainClass.AddLog("CurrentRoom.CurrentSong.Name: '" + CurrentRoom.CurrentSong.Name + "' CurrentRoom.CurrentSong.SubTitle: '"+ CurrentRoom.CurrentSong.SubTitle + "' CurrentRoom.CurrentSong.Artist: '" +CurrentRoom.CurrentSong.Artist); 
-
 		if ( CurrentRoom != null)
 		{
 			if (CurrentRoom.CurrentSong !=  null )
 			{
-				if ( ((CurrentRoom.CurrentSong.Name == "") && (CurrentRoom.CurrentSong.SubTitle == "") && (CurrentRoom.CurrentSong.Artist == "")) )
+				if ( ((CurrentRoom.CurrentSong.PICKName == "") && (CurrentRoom.CurrentSong.PICKSubTitle == "") && (CurrentRoom.CurrentSong.PICKArtist == "")) )
 				{
 					//Do Nothing
 				}
@@ -1059,9 +1059,9 @@ public class User
 				{
 					ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCRSG));
 					ez.Write1(Start ? (byte)2 : (byte)1);
-					ez.WriteNT(CurrentRoom.CurrentSong.Name);
-					ez.WriteNT(CurrentRoom.CurrentSong.Artist);
-					ez.WriteNT(CurrentRoom.CurrentSong.SubTitle);
+					ez.WriteNT(CurrentRoom.CurrentSong.PICKName);
+					ez.WriteNT(CurrentRoom.CurrentSong.PICKArtist);
+					ez.WriteNT(CurrentRoom.CurrentSong.PICKSubTitle);
 					ez.SendPack();
 				}
 			}
@@ -1882,6 +1882,11 @@ public class User
 					newSong.SubTitle = pickAlbum;
 
 					CurrentRoom.CurrentSong = newSong;
+
+					CurrentRoom.CurrentSong.PICKName = pickName;
+					CurrentRoom.CurrentSong.PICKArtist = pickArtist;
+					CurrentRoom.CurrentSong.PICKSubTitle = pickAlbum;
+
 					string htime = "";
 					int pickSongPlayed = 0;
 					int newSongID = 0;
@@ -1997,6 +2002,17 @@ public class User
 				return;
 			}
 
+			if ( smoUsername.Length > 32 )
+			{
+				ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
+				ez.Write2(1);
+				ez.WriteNT("Login failed! Name too Long");
+				ez.SendPack();
+
+				MainClass.AddLog("Login name too long:" + smoUsername, true);
+				return;
+			}
+
 			Hashtable[] smoLoginCheck = MySql.Query("SELECT * from users where Username='" + MySql.AddSlashes(smoUsername) + "'");
 			if (smoLoginCheck.Length == 1 && smoLoginCheck[0]["Password"].ToString() == smoPassword)
 			{
@@ -2012,7 +2028,7 @@ public class User
 				Rank_Table =  checkstasrank[0];
 				User_Level_Rank = (int)Rank_Table["levelrank"] + 1;
 
-				MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + MySql.AddSlashes(smoUsername) + "','" + smoPassword + "','" + User_IP + "','suceeded','" + User_Game + "')");
+				MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + MySql.AddSlashes(smoUsername) + "','" + smoPassword + "','" + User_IP + "','suceeded','" + MySql.AddSlashes(User_Game) + "')");
 
 				User[] checkifconnected = GetUsersInServer();
 				foreach (User user in  checkifconnected)
@@ -2107,7 +2123,7 @@ public class User
 					User_Name = (string)User_Table["Username"];
 					User_Rank = (UserRank)User_Table["Rank"];
 
-					MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + User_Name + "','" + smoPassword + "','" + User_IP + "','suceeded','" + User_Game + "')");
+					MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + MySql.AddSlashes(User_Name) + "','" + smoPassword + "','" + User_IP + "','suceeded','" + MySql.AddSlashes(User_Game) + "')");
 
 					ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
 					ez.Write2(0);
@@ -2127,7 +2143,7 @@ public class User
 
 
 			MainClass.AddLog(smoUsername + " tried logging in with hash " + smoPassword + " but failed");
-			MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + smoUsername + "','" + smoPassword + "','" + User_IP + "','failed','" + User_Game + "')");
+			MySql.Query("INSERT INTO connectionlog (userid,username,password,ip,result,clientversion) VALUES('" + User_ID + "','" + MySql.AddSlashes(smoUsername) + "','" + smoPassword + "','" + User_IP + "','failed','" + MySql.AddSlashes(User_Game) + "')");
 
 			ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCSMOnline));
 			ez.Write2(1);

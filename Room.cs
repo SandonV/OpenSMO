@@ -17,6 +17,7 @@ public class Room
 	public string Style = "dance";
 	public List<int> banned = new List<int>();
 	public RoomStatus Status = RoomStatus.Closed;
+	public bool NoWebChat = false;
 	public bool Free;
 	public bool AllPlaying = false;
 	public bool Secret = false;
