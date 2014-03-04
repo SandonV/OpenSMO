@@ -10,11 +10,81 @@ using System.Net.Sockets;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
+using System.Threading;
 
 namespace OpenSMO
 {
 public enum UserRank : int { User, Moderator, Admin }
 public enum RoomRights : int { Player, Operator, Owner }
+
+public class SyncStart
+{
+	public User mUser;
+	public MainClass mainClass;
+	public SyncStart(User user)
+	{
+		mUser = user;
+	}
+
+	public void StartWhenAllSynced(User[] checkSyncPlayers)
+	{
+		bool allwaiting = true;
+		Stopwatch timeout = new Stopwatch();
+		timeout.Restart();
+		while(true)
+		{
+			if (mUser.skippacket)
+			{
+				break;
+			}
+			MainClass.AddLog("Waited: " + timeout.ElapsedMilliseconds.ToString());
+
+			lock(mUser)
+			{
+				foreach (User user in checkSyncPlayers)
+				{
+					if (!user.waiting)
+					{
+						allwaiting = false;
+					}
+				}
+			}
+			
+			if((timeout.ElapsedMilliseconds > 15000) || allwaiting)
+			{
+				if(timeout.ElapsedMilliseconds > 15000)
+				{
+					lock(mUser)
+					{
+						foreach (User user in checkSyncPlayers)
+						{
+							if (!user.waiting)
+							{
+								MainClass.AddLog("Gave up on waiting for:" + user.User_Name + ". Starting round");
+							}
+						}
+					}
+				}
+				// Start Playing
+				lock(mUser)
+				{
+					foreach (User user in checkSyncPlayers)
+					{
+						MainClass.AddLog("Sent Song Start to " + user.User_Name);
+						user.waiting = false;
+						user.skippacket = true;
+						user.SendSongStartTo(checkSyncPlayers);
+					}
+					mUser.CurrentRoom.roomid = Data.CreateRoomDB(mUser);
+					break;
+				}
+			}
+			// Only check every 100ms to reduce load and duplicate packet odds
+			Thread.Sleep(100);
+		}
+		Thread.CurrentThread.Abort();
+	}
+};
 
 public class SongScanner
 {
@@ -149,11 +219,15 @@ public class User
 	public List<int> ignored = new List<int>();
 	public string joinpass = "";
 	public int nihongo = 0;
+	public bool waiting = false;
+	public bool gotstart = false;
+        public bool skippacket = false;
 	public int User_Protocol = 0;
 	public string User_Game = "";
 	public int connectioncount = 0;
 	private Room _CurrentRoom = null;
 	private SongScanner mSongScanner = null;
+	private SyncStart mSyncStart = null;
 	public Stopwatch SelectTime = new Stopwatch();
 	public Stopwatch disconnectedsince = new Stopwatch();
 
@@ -1157,7 +1231,6 @@ public class User
 
 	public void SendSongStartTo(User[] checkSyncPlayers)
 	{
-		CurrentRoom.roomid = Data.CreateRoomDB(this);
 		foreach (User user in checkSyncPlayers)
 		{
 			user.Synced = false;
@@ -1166,6 +1239,7 @@ public class User
 			user.ez.SendPack();
 		}
 	}
+
 
 	public void NSCPing()
 	{
@@ -1314,24 +1388,27 @@ public class User
 		GamePlayerSettings = string.Join(", ", uniquesettings);
 		CurrentRoom.AllPlaying = true;
 		User[] checkSyncPlayers = GetUsersInRoom();
-		foreach (User user in checkSyncPlayers)
+
+		if (!gotstart)
 		{
-			if (user.SyncNeeded && user.CanPlay && !user.Synced)
-				CurrentRoom.AllPlaying = false;
+			MainClass.AddLog("SENT NSCGSR");
+			// Waiting for other players to sync.
+			SendSongStartTo(checkSyncPlayers);
+			gotstart = true;
 		}
-
-//		if (!Synced || CurrentRoom.AllPlaying)
-//		{
-//			MainClass.AddLog("SENT NSCGSR");
-//			ez.Write1((byte)(mainClass.ServerOffset + NSCommand.NSCGSR));
-//			ez.SendPack();
-
-//			if (!Synced || CurrentRoom.AllPlaying)
-//			{
-		SendSongStartTo(checkSyncPlayers);
-		CurrentRoom.AllPlaying = false;
-//			}
-//		}
+		else
+		{
+			gotstart = false;
+			waiting = true;
+			MainClass.AddLog("SENT SYNC NSCGSR");
+			skippacket = false;
+			mSyncStart = new SyncStart(this);
+			Thread syncstartT = new Thread(() => mSyncStart.StartWhenAllSynced(checkSyncPlayers));
+			if (!syncstartT.IsAlive)
+			{
+				syncstartT.Start();
+			}
+		}
 	}
 
 	public static int GetServCombo(int NoteHit, int servcombo)
